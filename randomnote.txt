@@ -1,0 +1,17 @@
+[entry]
+API Gateway (Throttlingに注意) -> Lambda -> S3
+
+[レコード数]
+20,000unique access/h -> (5回/unique accessと仮定) 100,000レコード/h -> 2,400,000レコード/day  -> S3
+分ごとにファイルをまとめる?
+
+[output]
+S3 - redshift
+cloudwatch -> CSV
+一日一回で処理できるか? たぶん可能
+
+[db]
+  Coupon
+  User
+    user_idはuuid
+  Shop
