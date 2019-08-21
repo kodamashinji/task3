@@ -5,13 +5,42 @@ API Gateway (Throttlingに注意) -> Lambda -> S3
 20,000unique access/h -> (5回/unique accessと仮定) 100,000レコード/h -> 2,400,000レコード/day  -> S3
 分ごとにファイルをまとめる?
 
+リクエストは1,666/min. api gatewayで十分さばける量のはず
+
 [output]
 S3 - redshift
 cloudwatch -> CSV
-一日一回で処理できるか? たぶん可能
+
+一日一回で処理できるか?
+→ たぶん可能
+
+バッチ処理はおそらく3min.で終わらないので、ec2立ち上げて処理させるか?
+→ lambdaでec2起動 -> 終了後自動クローズでたぶんok
+
+CSVはs3に置いて、http(s)でダウンロードする形にするか。
+→ ひとまずその方向。
+
+CSVは時系列? ユーザー毎?
+→ 時系列のみである必要性はなさそうなので、ユーザー毎に時系列にする
+
 
 [db]
   Coupon
   User
     user_idはuuid
   Shop
+
+→ 今回の要件(試験範囲)ではschemeは使わなそうだが、定義はしておく。
+
+
+[to-do]
+  * S3 (ログ置き場 / CSV置き場)
+  * SQS (リクエストの保存)
+  * Lambda (スマホからのリクエスト受け / SQS処理用 / CSV作成用ec2立ち上げ / CSV作成用ec2終了)
+  * Redshift spectrumの設定
+  * Cloudwatch (SQS処理用lambda起動[毎分] / CSV作成用ec2立ち上げ[毎日])
+  * API Gateway
+  * DB Scheme定義およびauroraへの投入
+  * CSV作成用プログラム作成 (python3でいいかな)
+  * 設計書/構成図 (powerpoint?)
+  * テスト(できれば自動化)
