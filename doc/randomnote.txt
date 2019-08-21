@@ -44,3 +44,8 @@ CSVは時系列? ユーザー毎?
   * CSV作成用プログラム作成 (python3でいいかな)
   * 設計書/構成図 (powerpoint?)
   * テスト(できれば自動化)
+
+[done]
+  * CSV作成用ec2 (collect-serverと呼称)立ち上げ、終了用lambda
+  * collect-server用ec2 serverの作成とpython3(含むboto3)のインストール
+

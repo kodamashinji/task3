@@ -1,0 +1,30 @@
+  dynamitecoolguy@gmail.com
+  026845558380  ( https://026845558380.signin.aws.amazon.com/console )
+
+IAM:
+  ユーザー: kodama (AdministratorAccessをアタッチ)
+  Billing and Cost ManagementのIAMユーザーによる請求情報へのアクセスを有効化
+
+  ポリシーの新規作成
+    ViewBillingAll → 作ったポリシーをユーザーkodamaに付与
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+          {
+              "Effect": "Allow",
+              "Action": "aws-portal:ViewBilling",
+              "Resource": "*"
+          }
+      ]
+    }
+
+  ロール:
+    lambda-all-role
+      Lambdaロール / AmazonEC2FullAccess, AmazonS3FullAccess, AWSLambdaFullAccess
+
+EC2:
+  インスタンス作成:
+    T2, AmazonLinux, ほぼデフォルト設定, Public IPなし
+    セキュリティグループ: ssh only
+    sudo yum update && sudo yum install python3 && sudo pip3 install boto3
+    インスタンスID: i-0f2ace5d656e6fa62
