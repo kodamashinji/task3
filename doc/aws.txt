@@ -20,7 +20,7 @@ IAM:
 
   ロール:
     lambda-all-role
-      Lambdaロール / AmazonEC2FullAccess, AmazonS3FullAccess, AWSLambdaFullAccess
+      Lambdaロール / AmazonEC2FullAccess, AmazonS3FullAccess, AWSLambdaFullAccess, AmazonSQSFullAccess
 
 EC2:
   インスタンス作成:
@@ -33,3 +33,7 @@ SQS:
   キュー名: request-queue
     種類: 標準キュー
     パラメータ: デフォルト
+
+API Gateway:
+  API名: position
+  メソッド: /  POST   lambda : parse-request
