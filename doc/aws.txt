@@ -36,9 +36,21 @@ SQS:
 
 API Gateway:
   API名: position
-    メソッド: /  POST   lambda : parse-request
-    デプロイ:  https://gaau8g4xac.execute-api.ap-northeast-1.amazonaws.com/prod
+    メソッド: /register  POST   lambda : parse-request
+    デプロイ:  https://gaau8g4xac.execute-api.ap-northeast-1.amazonaws.com/production
+    リソースポリシー:
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "execute-api:Invoke",
+                "Resource": "arn:aws:execute-api:ap-northeast-1:026845558380:gaau8g4xac/production/POST/register"
+            }
+        ]
+    }
 
-    curl -X POST -H "Content-Type: application/json" -d '{"user_id":"hogehoge","location":{"lat_north_south":"N","latitude":"35.7","lon_west_east":"E","longitude","139.7"},"timestamp":1555055157}'  https://gaau8g4xac.execute-api.ap-northeast-1.amazonaws.com/prod
+    curl -X POST -H "Content-Type: application/json" -d '{"user_id":"hogehoge","location":{"lat_north_south":"N","latitude":"35.7","lon_west_east":"E","longitude":"139.7"},"timestamp":1555055157}'  https://gaau8g4xac.execute-api.ap-northeast-1.amazonaws.com/production/register
 
 
