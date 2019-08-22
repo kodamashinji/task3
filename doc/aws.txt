@@ -26,5 +26,10 @@ EC2:
   インスタンス作成:
     T2, AmazonLinux, ほぼデフォルト設定, Public IPなし
     セキュリティグループ: ssh only
-    sudo yum update && sudo yum install python3 && sudo pip3 install boto3
+    sudo yum update && sudo yum install python3 && pip3 install boto3 pyarrow
     インスタンスID: i-0f2ace5d656e6fa62
+
+SQS:
+  キュー名: request-queue
+    種類: 標準キュー
+    パラメータ: デフォルト

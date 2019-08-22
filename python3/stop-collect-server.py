@@ -6,6 +6,7 @@ EC2_INSTANCE_ID = 'i-0f2ace5d656e6fa62'
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+
 def ec2_stop():
     logger.info('ec2_stop')
     client = boto3.client('ec2')
@@ -18,10 +19,10 @@ def ec2_stop():
     if response['ResponseMetadata']['HTTPStatusCode'] != 200:
         raise Exception('ec2 stop error', response)
 
+
 def lambda_handler(event, context):
     try:
         logger.info('start.')
-        boto3.setup_default_session(region_name='ap-northeast-1')
         ec2_stop()
         logger.info('finished.')
         return 'success'
