@@ -54,7 +54,7 @@ API Gateway:
 
 S3:
   バケット: //me32as8cme32as8c-task3-rawdata
-    サブフォルダ: /unstored, /done
+    サブフォルダ: /work, /done
 
   バケット: //me32as8cme32as8c-task3-stored
 

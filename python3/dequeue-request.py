@@ -1,11 +1,14 @@
 # coding=utf-8
 import boto3
 import logging
+import time
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 QUEUE_NAME = 'request-queue'
+BUCKET = 'me32as8cme32as8c-task3-rawdata'
+FOLDER = 'work/'
 
 
 def retrieve_location():
@@ -24,14 +27,16 @@ def retrieve_location():
             result.append(body)
             # sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=handle)
 
-    print(retrieved)
-    print(result)
-
     return result
 
 
 def write_location(locations):
-    pass
+    s3 = boto3.client('s3')
+    s3.put_object(
+        Bucket=BUCKET,
+        Key=FOLDER + str(int(time.time())) + ".csv",
+        Body="\n".join(locations)
+    )
 
 
 def lambda_handler(event, context):

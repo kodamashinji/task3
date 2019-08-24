@@ -12,5 +12,5 @@ created_at integer
 )
 row format delimited fields terminated by ','
 stored as textfile
-location 's3://me32as8cme32as8c-task3-rawdata/unstored/';
+location 's3://me32as8cme32as8c-task3-rawdata/work/';
 
