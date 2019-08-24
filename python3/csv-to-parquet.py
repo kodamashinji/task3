@@ -4,7 +4,8 @@ import logging
 import tempfile
 import os
 import datetime
-
+import time
+import smart_open
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -59,26 +60,60 @@ def get_target_time():
     return target_time
 
 
-def load_object(s3_object):
+def separate_request(key, fdt, fdn, target_time):
     # ex) s3_object is 'work/1566624557.csv'
-    s3
-    pass
+    with smart_open.open('s3://' + BUCKET + '/' + key, 'rb') as fd:
+        for line in fd:
+            s = line.decode('ascii').strip()
+            if len(s) > 0:
+                t = int(s.rsplit(',', 1)[1])
+                buffer = bytes(s + '\n', 'ascii')
+                if t < target_time:
+                    fdt.write(buffer)
+                else:
+                    fdn.write(buffer)
+
+
+def store_request(target_file_name, non_target_file_name):
+    filename = str(int(time.time())) + '.csv'
+
+    if os.path.exists(target_file_name) and os.path.getsize(target_file_name) > 0:
+        s3.upload_file(Filename=target_file_name, Bucket=BUCKET, Key=FOLDER_DONE + filename)
+
+    if os.path.exists(non_target_file_name) and os.path.getsize(non_target_file_name) > 0:
+        s3.upload_file(Filename=target_file_name, Bucket=BUCKET, Key=FOLDER_WORK + filename)
+
+
+def remove_request_object(key_list):
+    for key in key_list:
+        # s3.delete_object(Bucket=BUCKET, Key=key)
+        print(key)
 
 
 def main():
     target_request_file, non_target_request_file = [None, None]
     try:
         logger.info('start.')
-        object_list = list_request_objects()
-        target_request_file, non_target_request_file = make_temporary_files()
-        target_time = get_target_time()
-        for s3_object in object_list:
-            requests = load_object(s3_object)
+        # ターゲットとなり全ファイル名を取得
+        key_list = list_request_objects()
 
-        print(requests)
-        print(target_request_file.name)
-        print(non_target_request_file.name)
-        print(target_time)
+        # 対象レコードと非対象レコード保管用の一時ファイルの作成(自動deleteされない)
+        target_request_file, non_target_request_file = make_temporary_files()
+
+        # 基準となる時間 (今日の0:00)のunixtimeの取得
+        target_time = get_target_time()
+
+        # ファイル毎に基準時間前後で、保管用一時ファイルに振り分ける
+        with target_request_file as fdt, non_target_request_file as fdn:
+            for key in key_list:
+                separate_request(key, fdt, fdn, target_time)
+
+        # 結果をS3に保管する
+        store_request(target_request_file.name, non_target_request_file.name)
+
+        # 処理済みのオブジェクトを削除
+        remove_request_object(key_list)
+
         logger.info('finished.')
         return 'success'
     except Exception as e:
