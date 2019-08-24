@@ -1,3 +1,4 @@
+# coding=utf-8
 import boto3
 import logging
 
@@ -27,7 +28,7 @@ def parse_json(json):
     return user_id + ',' + str(latitude) + ',' + str(longitude) + ',' + str(timestamp)
 
 
-def push_to_sqs(csv):
+def push_location(csv):
     sqs = boto3.client('sqs')
     queue_url = sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
     sqs.send_message(
@@ -40,7 +41,7 @@ def lambda_handler(event, context):
     try:
         logger.info('start.')
         csv = parse_json(event)
-        push_to_sqs(csv)
+        push_location(csv)
         print(event)
         print(csv)
         logger.info('finished.')
@@ -67,5 +68,5 @@ if __name__ == "__main__":
             },
             'timestamp': 1555055157
         },
-        ''
+        {}
     )

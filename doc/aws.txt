@@ -51,9 +51,29 @@ API Gateway:
         ]
     }
 
-    curl -X POST -H "Content-Type: application/json" -d '{"user_id":"hogehoge","location":{"lat_north_south":"N","latitude":"35.7","lon_west_east":"E","longitude":"139.7"},"timestamp":1555055157}'  https://gaau8g4xac.execute-api.ap-northeast-1.amazonaws.com/production/register
 
 S3:
-  me32as8cme32as8c-task3-csv
-  me32as8cme32as8c-task3-parquet
+  バケット: //me32as8cme32as8c-task3-rawdata
+    サブフォルダ: /unstored, /done
+
+  バケット: //me32as8cme32as8c-task3-stored
+
+
+Redshift:
+  IAMロール: redshift-role
+    Redshift
+      Redshift - Customizable
+        AmazonS3ReadOnlyAccess, AWSGlueConsoleFullAccessポリシーを付与
+
+  セキュリティグループの作成:
+    outbound
+      TCP/5439 0.0.0.0/0
+
+  クラスター: task3
+    データベース名: location
+    ポート: 5439
+    ノードタイプ: dc2.large
+    パブリックアクセス可能: Yes
+    Enahdnced VPC Routingが必要か????
+    エンドポイント: task3.coni1ixwsfmu.ap-northeast-1.redshift.amazonaws.com:5439
 
