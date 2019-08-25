@@ -35,6 +35,8 @@ EC2:
     # git config --global user.email "vendetta@pa2.so-net.ne.jp"
     # git config --global user.name "Shinji Kodama"
     # git clone git@github.com:kodamashinji/task3.git
+    # aws configure
+
 
 SQS:
   キュー名: request-queue
