@@ -8,7 +8,10 @@ logger.setLevel(logging.INFO)
 QUEUE_NAME = 'request-queue'
 
 
-def parse_json(json):
+#
+# リクエストで来たJSONファイルをCSV文字列に変換する
+#
+def parse_request(json):
     user_id = json['user_id']
     location = json['location']
     lat_mark = location['lat_north_south'].upper()
@@ -28,22 +31,24 @@ def parse_json(json):
     return user_id + ',' + str(latitude) + ',' + str(longitude) + ',' + str(timestamp)
 
 
-def push_location(csv):
+#
+# 位置情報を表すCSVをSQSにpushする
+# CSV形式は、"ユーザID,緯度(南緯は負),経度(西経は負),タイムスタンプ(unixtime)"
+#
+def push_location(location):
     sqs = boto3.client('sqs')
     queue_url = sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
     sqs.send_message(
         QueueUrl=queue_url,
-        MessageBody=csv
+        MessageBody=location
     )
 
 
 def lambda_handler(event, context):
     try:
         logger.info('start.')
-        csv = parse_json(event)
-        push_location(csv)
-        print(event)
-        print(csv)
+        location = parse_request(event)
+        push_location(location)
         logger.info('finished.')
         return 'success'
     except KeyError as e:

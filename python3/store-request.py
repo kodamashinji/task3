@@ -11,10 +11,13 @@ BUCKET = 'me32as8cme32as8c-task3-rawdata'
 FOLDER = 'work/'
 
 
+#
+# SQSに蓄えられたリクエストを取得し、重複を取り除いた位置情報一覧を取得する
+#
 def retrieve_location():
     sqs = boto3.client('sqs')
-    retrieved = set()
-    result = list()
+    retrieved = set()  # 重複チェック用
+    result = list()    # メソッドの結果
     queue_url = sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
     while True:
         messages = sqs.receive_message(QueueUrl=queue_url)
@@ -22,20 +25,23 @@ def retrieve_location():
             break
         message = messages['Messages'][0]
         handle, md5, body = [message[x] for x in ['ReceiptHandle', 'MD5OfBody', 'Body']]
-        if md5 not in retrieved:
+        if md5 not in retrieved:  # メッセージが重複していなければ
             retrieved.update({md5})
             result.append(body)
-            # sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=handle)
+        sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=handle)
 
     return result
 
 
+#
+# 位置情報を作業用フォルダ(S3)に書き込む
+#
 def write_location(locations):
     s3 = boto3.client('s3')
     s3.put_object(
         Bucket=BUCKET,
         Key=FOLDER + str(int(time.time())) + ".csv",
-        Body="\n".join(locations)
+        Body="\n".join(locations) + "\n"
     )
 
 
