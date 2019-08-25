@@ -27,7 +27,7 @@ EC2:
     T2, AmazonLinux, ほぼデフォルト設定, Public IPなし
     セキュリティグループ: ssh only
     インスタンスID: i-0f2ace5d656e6fa62
-    # sudo yum update && sudo yum install python3 git && pip3 install boto3 pyarrow
+    # sudo yum update && sudo yum install python3 git && pip3 install boto3 pyarrow smart_open
     # ssh-keygen -t rsa
     # eval "$(ssh-agent -s)"
     # ssh-add ~/.ssh/id_rsa
