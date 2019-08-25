@@ -6,12 +6,16 @@ import os
 import datetime
 import time
 import smart_open
+import pandas
+import pyarrow
+import pyarrow.parquet as parquet
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 QUEUE_NAME = 'request-queue'
-BUCKET = 'me32as8cme32as8c-task3-rawdata'
+RAWDATA_BUCKET = 'me32as8cme32as8c-task3-rawdata'
+STORED_BUCKET = 'me32as8cme32as8c-task3-stored'
 FOLDER_WORK = 'work/'
 FOLDER_DONE = 'done/'
 
@@ -27,7 +31,7 @@ def list_location_file():
 
     # フォルダ以下のファイル一覧を取得
     response = s3.list_objects_v2(
-        Bucket=BUCKET,
+        Bucket=RAWDATA_BUCKET,
         Prefix=FOLDER_WORK
     )
 
@@ -38,20 +42,13 @@ def list_location_file():
     while 'NextContinuationToken' in response:
         token = response['NextContinuationToken']
         response = s3.list_objects_v2(
-            Bucket=BUCKET,
+            Bucket=RAWDATA_BUCKET,
             Prefix=FOLDER_WORK,
             ContinuationToken=token
         )
         result.extend([x['Key'] for x in response['Contents'] if x['Key'] != FOLDER_WORK])
 
     return result
-
-
-#
-# 対象の位置情報と非対象の位置情報を書き込むための一時ファイルを作成
-#
-def make_temporary_file():
-    return [tempfile.NamedTemporaryFile(delete=False), tempfile.NamedTemporaryFile(delete=False)]
 
 
 #
@@ -77,7 +74,7 @@ def get_base_time():
 #
 def separate_location(file, fd_retrieved, fd_pushed_back, base_time):
     # ex) s3_object is 'work/1566624557.csv'
-    with smart_open.open('s3://' + BUCKET + '/' + file, 'rb') as fd:
+    with smart_open.open('s3://' + RAWDATA_BUCKET + '/' + file, 'rb') as fd:
         for line in fd:
             timestamp, buffer = get_timestamp_and_buffer(line)
             if timestamp > 0:
@@ -109,15 +106,8 @@ def get_timestamp_and_buffer(line):
 #
 # 一時保管ファイルをS3にアップロードする
 #
-def store_location(retrieved_file_name, pushed_back_file_name):
-    # 保存するファイル名
-    filename = str(int(time.time())) + '.csv'
-
-    if os.path.exists(retrieved_file_name) and os.path.getsize(retrieved_file_name) > 0:
-        s3.upload_file(Filename=retrieved_file_name, Bucket=BUCKET, Key=FOLDER_DONE + filename)
-
-    if os.path.exists(pushed_back_file_name) and os.path.getsize(pushed_back_file_name) > 0:
-        s3.upload_file(Filename=pushed_back_file_name, Bucket=BUCKET, Key=FOLDER_WORK + filename)
+def store_location(upload_file_name, target_file_name):
+    s3.upload_file(Filename=upload_file_name, Bucket=RAWDATA_BUCKET, Key=target_file_name)
 
 
 #
@@ -125,18 +115,35 @@ def store_location(retrieved_file_name, pushed_back_file_name):
 #
 def remove_location_file(file_list):
     for file in file_list:
-        s3.delete_object(Bucket=BUCKET, Key=file)
+        s3.delete_object(Bucket=RAWDATA_BUCKET, Key=file)
+
+
+#
+# CSVからparquetファイルを作って、一時ファイルに書き出す
+#
+def create_parquet(csv_file, parquet_file):
+    data_frame = pandas.read_csv(csv_file)
+    table = pyarrow.Table.from_pandas(data_frame)
+    parquet.write_table(table, parquet_file)
+
+
+#
+# parquetファイルをS3にアップロードする
+def upload_parquet(parquet_file, target_file_name, base_time):
+    target_key = 'TODO: target_key_name'
+    s3.upload_file(Filename=parquet_file, Bucket=STORED_BUCKET, Key=target_key)
 
 
 def main():
-    retrieved_file, pushed_back_file = [None, None]
+    retrieved_file, pushed_back_file, parquet_file = [None, None, None]
     try:
         logger.info('start.')
         # ターゲットとなる全ファイル名を取得
         file_list = list_location_file()
 
         # 対象レコードと非対象レコード保管用の一時ファイルの作成(自動deleteされない)
-        retrieved_file, pushed_back_file = make_temporary_file()
+        retrieved_file = tempfile.NamedTemporaryFile(delete=False)
+        pushed_back_file = tempfile.NamedTemporaryFile(delete=False)
 
         # 基準となる時間 (今日の0:00)のunixtimeの取得
         base_time = get_base_time()
@@ -147,7 +154,15 @@ def main():
                 separate_location(file, fd_retrieved, fd_pushed_back, base_time)
 
         # 結果をS3に保管する
-        store_location(retrieved_file.name, pushed_back_file.name)
+        upload_filename = str(int(time.time()))
+        if os.path.exists(retrieved_file.name) and os.path.getsize(retrieved_file.name) > 0:
+            store_location(retrieved_file.name, FOLDER_DONE + upload_filename + '.csv')
+            parquet_file = tempfile.NamedTemporaryFile(delete=False)
+            create_parquet(retrieved_file.name, parquet_file.name)
+            upload_parquet(parquet_file.name, upload_filename + '.parquet', base_time)
+
+        if os.path.exists(pushed_back_file.name) and os.path.getsize(pushed_back_file.name) > 0:
+            store_location(pushed_back_file.name, FOLDER_WORK + upload_filename + '.csv')
 
         # 処理済みのファイルを削除
         remove_location_file(file_list)
@@ -157,10 +172,8 @@ def main():
     except Exception as e:
         logger.error(e)
     finally:
-        if retrieved_file is not None:
-            os.remove(retrieved_file.name)
-        if pushed_back_file is not None:
-            os.remove(pushed_back_file.name)
+        for file in [f for f in [retrieved_file, pushed_back_file, parquet_file] if f is not None]:
+            os.remove(file.name)
 
     return 'error'
 
