@@ -28,6 +28,13 @@ EC2:
     セキュリティグループ: ssh only
     インスタンスID: i-0f2ace5d656e6fa62
     # sudo yum update && sudo yum install python3 git && pip3 install boto3 pyarrow
+    # ssh-keygen -t rsa
+    # eval "$(ssh-agent -s)"
+    # ssh-add ~/.ssh/id_rsa
+    # cat ~/.ssh/id_rsa.pub   (githubに貼り付け)
+    # git config --global user.email "vendetta@pa2.so-net.ne.jp"
+    # git config --global user.name "Shinji Kodama"
+    # git clone git@github.com:kodamashinji/task3.git
 
 SQS:
   キュー名: request-queue
