@@ -6,17 +6,18 @@ import os
 import datetime
 import time
 import smart_open
+import psycopg2
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 QUEUE_NAME = 'request-queue'
-BUCKET = 'me32as8cme32as8c-task3-rawdata'
+BUCKET = 'me32as8cme32as8c-task3-location'
 FOLDER_WORK = 'work/'
-FOLDER_DONE = 'done/'
+FOLDER_PARTED = 'parted/'
 
 s3 = boto3.client('s3')
-time_delta = datetime.timedelta(hours=9)  # 作業場所の時差
+tz = 9 * 60 * 60   # JST(+9:00)
 
 
 #
@@ -48,43 +49,31 @@ def list_location_file():
 
 
 #
-# 対象の位置情報と非対象の位置情報を書き込むための一時ファイルを作成
+# 基準となる時間 (今日の0:00)のunix_timeの取得
 #
-def make_temporary_file():
-    return [tempfile.NamedTemporaryFile(delete=False), tempfile.NamedTemporaryFile(delete=False)]
+def get_base_time(unix_time):
+    local_time = unix_time + tz
+    local_base_time = local_time - local_time % (60 * 60 * 24)
+    return local_base_time - tz
 
 
 #
-# 基準となる時間 (今日の0:00)のunixtimeの取得
+# レコードの基準時間毎に、保管用一時ファイルに振り分ける
 #
-def get_base_time():
-    now = datetime.datetime.utcnow() + time_delta  # ローカル現在時刻
-    utc_today = datetime.datetime(now.year, now.month, now.day) - time_delta  # ローカルの今日の0時のUTC
-    return int(
-        datetime.datetime(
-            utc_today.year,
-            utc_today.month,
-            utc_today.day,
-            hour=utc_today.hour,
-            minute=utc_today.minute,
-            tzinfo=datetime.timezone.utc
-        ).timestamp()
-    )
-
-
-#
-# 基準時間前後で、保管用一時ファイルに振り分ける
-#
-def separate_location(file, fd_retrieved, fd_pushed_back, base_time):
+def separate_location(file, temporary_file_dict):
     # ex) s3_object is 'work/1566624557.csv'
     with smart_open.open('s3://' + BUCKET + '/' + file, 'rb') as fd:
         for line in fd:
             timestamp, buffer = get_timestamp_and_buffer(line)
             if timestamp > 0:
-                if timestamp < base_time:
-                    fd_retrieved.write(buffer)
-                else:
-                    fd_pushed_back.write(buffer)
+                base_time = get_base_time(timestamp)
+                if base_time not in temporary_file_dict:
+                    temporary_file_dict[base_time] = tempfile.NamedTemporaryFile(delete=False)
+
+                temp_file = temporary_file_dict[base_time]
+                temp_file.write(buffer)
+
+    return temporary_file_dict
 
 
 #
@@ -107,17 +96,10 @@ def get_timestamp_and_buffer(line):
 
 
 #
-# 一時保管ファイルをS3にアップロードする
+# ファイルが存在し空では無いかどうか
 #
-def store_location(retrieved_file_name, pushed_back_file_name):
-    # 保存するファイル名
-    filename = str(int(time.time())) + '.csv'
-
-    if os.path.exists(retrieved_file_name) and os.path.getsize(retrieved_file_name) > 0:
-        s3.upload_file(Filename=retrieved_file_name, Bucket=BUCKET, Key=FOLDER_DONE + filename)
-
-    if os.path.exists(pushed_back_file_name) and os.path.getsize(pushed_back_file_name) > 0:
-        s3.upload_file(Filename=pushed_back_file_name, Bucket=BUCKET, Key=FOLDER_WORK + filename)
+def file_is_not_empty(f):
+    return os.path.exists(f.name) and os.path.getsize(f.name) > 0
 
 
 #
@@ -128,26 +110,56 @@ def remove_location_file(file_list):
         s3.delete_object(Bucket=BUCKET, Key=file)
 
 
+#
+# Redshiftへのコネクション取得
+#
+def redshift_connect():
+    pgpass = get_pgpass()
+    host, port, database, user, password = pgpass.split(':')
+    conn = psycopg2.connect(host=host, dbname=database, user=user, password=password, port=port)
+    conn.autocommit = True
+    return conn
+
+
+#
+# Redshiftへのコネクション設定ファイル取得
+#
+def get_pgpass():
+    pgpass_file = os.getenv('HOME') + '/.pgpass'
+    with open(pgpass_file, 'r') as fd:
+        return fd.readline().strip()
+
+
+#
+# Redshiftにpartitionを追加
+#
+def add_partition_to_redshift(conn, ymd):
+    with conn.cursor() as cur:
+        cur.execute('alter table spectrum.location add if not exists partition(created_date=\'' + ymd + '\') '
+                    + 'location \'s3://' + BUCKET + '/' + FOLDER_PARTED + 'created_date=' + ymd + '/\'')
+
+
 def main():
-    retrieved_file, pushed_back_file = [None, None]
+    temporary_file_dict = dict()
     try:
         logger.info('start.')
         # ターゲットとなる全ファイル名を取得
         file_list = list_location_file()
 
-        # 対象レコードと非対象レコード保管用の一時ファイルの作成(自動deleteされない)
-        retrieved_file, pushed_back_file = make_temporary_file()
+        # データを基準時間毎に振り分けて一時ファイルに保管する
+        for file in file_list:
+            temporary_file_dict = separate_location(file, temporary_file_dict)
 
-        # 基準となる時間 (今日の0:00)のunixtimeの取得
-        base_time = get_base_time()
-
-        # ファイル毎に基準時間前後で、保管用一時ファイルに振り分ける
-        with retrieved_file as fd_retrieved, pushed_back_file as fd_pushed_back:
-            for file in file_list:
-                separate_location(file, fd_retrieved, fd_pushed_back, base_time)
+        # 一旦クローズ
+        [t.close() for t in temporary_file_dict.values()]
 
         # 結果をS3に保管する
-        store_location(retrieved_file.name, pushed_back_file.name)
+        file_name = str(int(time.time()))  # 保存するファイル名
+        with redshift_connect() as conn:
+            for base_time, temp_file in temporary_file_dict.items():
+                ymd = datetime.datetime.utcfromtimestamp(base_time + tz).strftime('%Y%m%d')  # YYYYMMDD
+                add_partition_to_redshift(conn, ymd)
+                s3.upload_file(Filename=temp_file.name, Bucket=BUCKET, Key=FOLDER_PARTED + 'created_date=' + ymd + '/' + file_name + '.csv')
 
         # 処理済みのファイルを削除
         remove_location_file(file_list)
@@ -157,10 +169,7 @@ def main():
     except Exception as e:
         logger.error(e)
     finally:
-        if retrieved_file is not None:
-            os.remove(retrieved_file.name)
-        if pushed_back_file is not None:
-            os.remove(pushed_back_file.name)
+        [os.remove(t.name) for t in temporary_file_dict.values()]
 
     return 'error'
 

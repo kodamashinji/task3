@@ -26,7 +26,7 @@ EC2:
   インスタンス作成:
     T2, AmazonLinux, ほぼデフォルト設定, Public IPなし
     セキュリティグループ: ssh only
-    sudo yum update && sudo yum install python3 && pip3 install boto3 pyarrow
+    sudo yum update && sudo yum install python3 && pip3 install boto3 psycopg2-binary smart-open
     インスタンスID: i-0f2ace5d656e6fa62
 
 SQS:
@@ -53,10 +53,10 @@ API Gateway:
 
 
 S3:
-  バケット: //me32as8cme32as8c-task3-rawdata
-    サブフォルダ: /work, /done
+  バケット: //me32as8cme32as8c-task3-location
+    サブフォルダ: /work, /parted
 
-  バケット: //me32as8cme32as8c-task3-stored
+  バケット: //me32as8cme32as8c-task3-download
 
 
 Redshift:
