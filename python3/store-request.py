@@ -7,7 +7,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 QUEUE_NAME = 'request-queue'
-BUCKET = 'me32as8cme32as8c-task3-rawdata'
+BUCKET = 'me32as8cme32as8c-task3-location'
 FOLDER = 'work/'
 
 

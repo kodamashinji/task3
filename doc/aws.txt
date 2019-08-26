@@ -62,10 +62,10 @@ API Gateway:
 
 
 S3:
-  バケット: //me32as8cme32as8c-task3-rawdata
-    サブフォルダ: /work, /done
+  バケット: //me32as8cme32as8c-task3-location
+    サブフォルダ: /work, /parted
 
-  バケット: //me32as8cme32as8c-task3-stored
+  バケット: //me32as8cme32as8c-task3-download
 
 
 Redshift:

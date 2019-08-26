@@ -6,21 +6,18 @@ import os
 import datetime
 import time
 import smart_open
-import pandas
-import pyarrow
-import pyarrow.parquet as parquet
+import psycopg2
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 QUEUE_NAME = 'request-queue'
-RAWDATA_BUCKET = 'me32as8cme32as8c-task3-rawdata'
-STORED_BUCKET = 'me32as8cme32as8c-task3-stored'
+BUCKET = 'me32as8cme32as8c-task3-location'
 FOLDER_WORK = 'work/'
-FOLDER_DONE = 'done/'
+FOLDER_PARTED = 'parted/'
 
 s3 = boto3.client('s3')
-time_delta = datetime.timedelta(hours=9)  # 作業場所の時差
+tz = 9 * 60 * 60   # JST(+9:00)
 
 
 #
@@ -31,7 +28,7 @@ def list_location_file():
 
     # フォルダ以下のファイル一覧を取得
     response = s3.list_objects_v2(
-        Bucket=RAWDATA_BUCKET,
+        Bucket=BUCKET,
         Prefix=FOLDER_WORK
     )
 
@@ -42,7 +39,7 @@ def list_location_file():
     while 'NextContinuationToken' in response:
         token = response['NextContinuationToken']
         response = s3.list_objects_v2(
-            Bucket=RAWDATA_BUCKET,
+            Bucket=BUCKET,
             Prefix=FOLDER_WORK,
             ContinuationToken=token
         )
@@ -52,36 +49,31 @@ def list_location_file():
 
 
 #
-# 基準となる時間 (今日の0:00)のunixtimeの取得
+# 基準となる時間 (今日の0:00)のunix_timeの取得
 #
-def get_base_time():
-    now = datetime.datetime.utcnow() + time_delta  # ローカル現在時刻
-    utc_today = datetime.datetime(now.year, now.month, now.day) - time_delta  # ローカルの今日の0時のUTC
-    return int(
-        datetime.datetime(
-            utc_today.year,
-            utc_today.month,
-            utc_today.day,
-            hour=utc_today.hour,
-            minute=utc_today.minute,
-            tzinfo=datetime.timezone.utc
-        ).timestamp()
-    )
+def get_base_time(unix_time):
+    local_time = unix_time + tz
+    local_base_time = local_time - local_time % (60 * 60 * 24)
+    return local_base_time - tz
 
 
 #
-# 基準時間前後で、保管用一時ファイルに振り分ける
+# レコードの基準時間毎に、保管用一時ファイルに振り分ける
 #
-def separate_location(file, fd_retrieved, fd_pushed_back, base_time):
+def separate_location(file, temporary_file_dict):
     # ex) s3_object is 'work/1566624557.csv'
-    with smart_open.open('s3://' + RAWDATA_BUCKET + '/' + file, 'rb') as fd:
+    with smart_open.open('s3://' + BUCKET + '/' + file, 'rb') as fd:
         for line in fd:
             timestamp, buffer = get_timestamp_and_buffer(line)
             if timestamp > 0:
-                if timestamp < base_time:
-                    fd_retrieved.write(buffer)
-                else:
-                    fd_pushed_back.write(buffer)
+                base_time = get_base_time(timestamp)
+                if base_time not in temporary_file_dict:
+                    temporary_file_dict[base_time] = tempfile.NamedTemporaryFile(delete=False)
+
+                temp_file = temporary_file_dict[base_time]
+                temp_file.write(buffer)
+
+    return temporary_file_dict
 
 
 #
@@ -104,10 +96,10 @@ def get_timestamp_and_buffer(line):
 
 
 #
-# 一時保管ファイルをS3にアップロードする
+# ファイルが存在し空では無いかどうか
 #
-def store_location(upload_file_name, target_file_name):
-    s3.upload_file(Filename=upload_file_name, Bucket=RAWDATA_BUCKET, Key=target_file_name)
+def file_is_not_empty(f):
+    return os.path.exists(f.name) and os.path.getsize(f.name) > 0
 
 
 #
@@ -115,54 +107,59 @@ def store_location(upload_file_name, target_file_name):
 #
 def remove_location_file(file_list):
     for file in file_list:
-        s3.delete_object(Bucket=RAWDATA_BUCKET, Key=file)
+        s3.delete_object(Bucket=BUCKET, Key=file)
 
 
 #
-# CSVからparquetファイルを作って、一時ファイルに書き出す
+# Redshiftへのコネクション取得
 #
-def create_parquet(csv_file, parquet_file):
-    data_frame = pandas.read_csv(csv_file)
-    table = pyarrow.Table.from_pandas(data_frame)
-    parquet.write_table(table, parquet_file)
+def redshift_connect():
+    pgpass = get_pgpass()
+    host, port, database, user, password = pgpass.split(':')
+    conn = psycopg2.connect(host=host, dbname=database, user=user, password=password, port=port)
+    conn.autocommit = True
+    return conn
 
 
 #
-# parquetファイルをS3にアップロードする
-def upload_parquet(parquet_file, target_file_name, base_time):
-    target_key = 'TODO: target_key_name'
-    s3.upload_file(Filename=parquet_file, Bucket=STORED_BUCKET, Key=target_key)
+# Redshiftへのコネクション設定ファイル取得
+#
+def get_pgpass():
+    pgpass_file = os.getenv('HOME') + '/.pgpass'
+    with open(pgpass_file, 'r') as fd:
+        return fd.readline().strip()
+
+
+#
+# Redshiftにpartitionを追加
+#
+def add_partition_to_redshift(conn, ymd):
+    with conn.cursor() as cur:
+        cur.execute('alter table spectrum.location add if not exists partition(created_date=\'' + ymd + '\') '
+                    + 'location \'s3://' + BUCKET + '/' + FOLDER_PARTED + 'created_date=' + ymd + '/\'')
 
 
 def main():
-    retrieved_file, pushed_back_file, parquet_file = [None, None, None]
+    temporary_file_dict = dict()
     try:
         logger.info('start.')
         # ターゲットとなる全ファイル名を取得
         file_list = list_location_file()
 
-        # 対象レコードと非対象レコード保管用の一時ファイルの作成(自動deleteされない)
-        retrieved_file = tempfile.NamedTemporaryFile(delete=False)
-        pushed_back_file = tempfile.NamedTemporaryFile(delete=False)
+        # データを基準時間毎に振り分けて一時ファイルに保管する
+        for file in file_list:
+            temporary_file_dict = separate_location(file, temporary_file_dict)
 
-        # 基準となる時間 (今日の0:00)のunixtimeの取得
-        base_time = get_base_time()
-
-        # ファイル毎に基準時間前後で、保管用一時ファイルに振り分ける
-        with retrieved_file as fd_retrieved, pushed_back_file as fd_pushed_back:
-            for file in file_list:
-                separate_location(file, fd_retrieved, fd_pushed_back, base_time)
+        # 一旦クローズ
+        [t.close() for t in temporary_file_dict.values()]
 
         # 結果をS3に保管する
-        upload_filename = str(int(time.time()))
-        if os.path.exists(retrieved_file.name) and os.path.getsize(retrieved_file.name) > 0:
-            store_location(retrieved_file.name, FOLDER_DONE + upload_filename + '.csv')
-            parquet_file = tempfile.NamedTemporaryFile(delete=False)
-            create_parquet(retrieved_file.name, parquet_file.name)
-            upload_parquet(parquet_file.name, upload_filename + '.parquet', base_time)
-
-        if os.path.exists(pushed_back_file.name) and os.path.getsize(pushed_back_file.name) > 0:
-            store_location(pushed_back_file.name, FOLDER_WORK + upload_filename + '.csv')
+        file_name = str(int(time.time()))  # 保存するファイル名
+        with redshift_connect() as conn:
+            for base_time, temp_file in temporary_file_dict.items():
+                ymd = datetime.datetime.utcfromtimestamp(base_time + tz).strftime('%Y%m%d')  # YYYYMMDD
+                add_partition_to_redshift(conn, ymd)
+                s3.upload_file(Filename=temp_file.name, Bucket=BUCKET, Key=FOLDER_PARTED + 'created_date=' + ymd + '/' + file_name + '.csv')
 
         # 処理済みのファイルを削除
         remove_location_file(file_list)
@@ -172,8 +169,7 @@ def main():
     except Exception as e:
         logger.error(e)
     finally:
-        for file in [f for f in [retrieved_file, pushed_back_file, parquet_file] if f is not None]:
-            os.remove(file.name)
+        [os.remove(t.name) for t in temporary_file_dict.values()]
 
     return 'error'
 
