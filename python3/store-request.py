@@ -20,15 +20,15 @@ def retrieve_location():
     result = list()    # メソッドの結果
     queue_url = sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
     while True:
-        messages = sqs.receive_message(QueueUrl=queue_url)
+        messages = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
         if 'Messages' not in messages or len(messages['Messages']) == 0:  # キューが空か
             break
-        message = messages['Messages'][0]
-        handle, md5, body = [message[x] for x in ['ReceiptHandle', 'MD5OfBody', 'Body']]
-        if md5 not in retrieved:  # メッセージが重複していなければ
-            retrieved.update({md5})
-            result.append(body)
-        sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=handle)
+        for message in messages['Messages']:
+            handle, md5, body = [message[x] for x in ['ReceiptHandle', 'MD5OfBody', 'Body']]
+            if md5 not in retrieved:  # メッセージが重複していなければ
+                retrieved.update({md5})
+                result.append(body)
+            sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=handle)
 
     return result
 
