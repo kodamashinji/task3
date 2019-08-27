@@ -154,12 +154,18 @@ def main():
         [t.close() for t in temporary_file_dict.values()]
 
         # 結果をS3に保管する
-        file_name = str(int(time.time()))  # 保存するファイル名
+        now = int(time.time())
+        today_base_time = get_base_time(now)
+        upload_file_name = str(now) + '.csv'
         with redshift_connect() as conn:
             for base_time, temp_file in temporary_file_dict.items():
-                ymd = datetime.datetime.utcfromtimestamp(base_time + tz).strftime('%Y%m%d')  # YYYYMMDD
-                add_partition_to_redshift(conn, ymd)
-                s3.upload_file(Filename=temp_file.name, Bucket=BUCKET, Key=FOLDER_PARTED + 'created_date=' + ymd + '/' + file_name + '.csv')
+                if base_time == today_base_time:
+                    s3.upload_file(Filename=temp_file.name, Bucket=BUCKET, Key=FOLDER_WORK + upload_file_name)
+                else:
+                    ymd = datetime.datetime.utcfromtimestamp(base_time + tz).strftime('%Y%m%d')  # YYYYMMDD
+                    add_partition_to_redshift(conn, ymd)
+                    s3.upload_file(Filename=temp_file.name, Bucket=BUCKET,
+                                   Key=FOLDER_PARTED + 'created_date=' + ymd + '/' + upload_file_name)
 
         # 処理済みのファイルを削除
         remove_location_file(file_list)
