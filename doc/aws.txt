@@ -74,6 +74,5 @@ Redshift:
     ポート: 5439
     ノードタイプ: dc2.large
     パブリックアクセス可能: Yes
-    Enahdnced VPC Routingが必要か????
     エンドポイント: task3.coni1ixwsfmu.ap-northeast-1.redshift.amazonaws.com:5439
 
