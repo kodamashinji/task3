@@ -1,4 +1,14 @@
 # coding=utf-8
+
+"""
+S3作業用フォルダ(s3://..../work)にあるオブジェクトを読み込み、日付毎に振り分ける。
+振り分けた結果は、S3格納用フォルダ(s3://..../parted)に書き出される。
+ただし、このプログラムを実行した当日のデータは一時保管用フォルダに戻されて、翌日以降に書き出される。
+
+なお、全体の処理手順は以下の通り
+parse-request  ->  store-request  ->  [retrieve-request]  -> collect-request
+"""
+
 import boto3
 import logging
 import tempfile
@@ -7,6 +17,8 @@ import datetime
 import time
 import smart_open
 import psycopg2
+import psycopg2.extensions
+from typing import Dict, List, BinaryIO, Type
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -20,10 +32,16 @@ s3 = boto3.client('s3')
 tz = 9 * 60 * 60   # JST(+9:00)
 
 
-#
-# 作業用フォルダ(S3)のファイル一覧を取得する
-#
-def list_location_file():
+def list_location_file() -> List[str]:
+    """
+    作業用フォルダ(S3)のファイル一覧を取得する
+
+    Returns
+    ------
+    List[str]
+        ファイル名の文字列一覧。
+        (例) "work/123456.csv"
+    """
     result = []
 
     # フォルダ以下のファイル一覧を取得
@@ -48,24 +66,46 @@ def list_location_file():
     return result
 
 
-#
-# 基準となる時間 (今日の0:00)のunix_timeの取得
-#
-def get_base_time(unix_time):
+def get_base_time(unix_time: int) -> int:
+    """
+    指定された時間を含む日付の0:00のunix時間を取得する (日本時間)
+
+    Parameters
+    ----------
+    unix_time: int
+        日付を計算するための基準時間
+
+    Returns
+    -------
+    int
+        unix_timeを含む日付の0:00のunix時間
+    """
     local_time = unix_time + tz
     local_base_time = local_time - local_time % (60 * 60 * 24)
+
     return local_base_time - tz
 
 
-#
-# レコードの基準時間毎に、保管用一時ファイルに振り分ける
-#
-def separate_location(file, temporary_file_dict):
-    # ex) s3_object is 'work/1566624557.csv'
+def separate_location(file: str, temporary_file_dict: Dict[int, BinaryIO]) -> dict:
+    """
+    レコードの基準時間毎に、保管用一時ファイルに振り分ける
+
+    Parameters
+    ----------
+    file: str
+        ファイル名 (例: 'work/1566624557.csv')
+    temporary_file_dict: Dict[int, BinaryIO]
+        作成されたtempfile.NamedTemporaryFileを保管するdict
+
+    Returns
+    -------
+    Dict[int, BinaryIO]
+        作成されたtempfile.NamedTemporaryFileを保管するdict
+    """
     with smart_open.open('s3://' + BUCKET + '/' + file, 'rb') as fd:
         for line in fd:
             timestamp, buffer = get_timestamp_and_buffer(line)
-            if timestamp > 0:
+            if timestamp > 0:                                   # 正常行か?
                 base_time = get_base_time(timestamp)
                 if base_time not in temporary_file_dict:
                     temporary_file_dict[base_time] = tempfile.NamedTemporaryFile(delete=False)
@@ -76,44 +116,59 @@ def separate_location(file, temporary_file_dict):
     return temporary_file_dict
 
 
-#
-# "user_id,latitude,longtude, timestamp"のtimestamp部分を取得し、行全体のbyte列を返す
-# ただし、無効行の場合は[0, b'']を返す
-#
-def get_timestamp_and_buffer(line):
-    s = line.decode('ascii').strip()  # binary -> str
+def get_timestamp_and_buffer(line: bytes) -> (int, bytes):
+    """
+    "user_id,latitude,longtude, timestamp"のtimestamp部分を取得し、行全体のbyte列を返す
+    ただし、無効行の場合は[0, b'']を返す
+
+    Parameters
+    ----------
+    line: byte
+        レコード1行のbyte列
+
+    Returns
+    -------
+    int, bytes
+        タイムスタンプ(レコードの最後のフィールド), レコード行 (常に改行付き)
+    """
+    s = line.decode('ascii').strip()               # bytes -> str
     if len(s) > 0:
         try:
-            timestamp = int(s.rsplit(',', 1)[1])
-            buffer = bytes(s + '\n', 'ascii')
-            return [timestamp, buffer]
+            timestamp = int(s.rsplit(',', 1)[1])   # 最後のフィールド
+            buffer = bytes(s + '\n', 'ascii')      # str -> bytes
+            return timestamp, buffer
         except IndexError:  # ","が無い
             pass
         except ValueError:  # timestampが数値じゃない
             pass
 
-    return [0, b'']
+    return 0, b''
 
 
-#
-# ファイルが存在し空では無いかどうか
-#
-def file_is_not_empty(f):
-    return os.path.exists(f.name) and os.path.getsize(f.name) > 0
+def remove_location_file(file_list: List[str]) -> None:
+    """
+    処理済みのファイルを削除
 
-
-#
-# 処理済みのファイルを削除
-#
-def remove_location_file(file_list):
+    Parameters
+    ----------
+    file_list: List[str]
+        ファイル名の文字列一覧。
+        (例) "work/123456.csv"
+    """
     for file in file_list:
         s3.delete_object(Bucket=BUCKET, Key=file)
 
 
-#
-# Redshiftへのコネクション取得
-#
-def redshift_connect():
+def redshift_connect() -> Type[psycopg2.extensions.connection]:
+    """
+    Redshiftへのコネクション取得
+    接続情報は$HOME/.pgpassから取得する
+
+    Returns
+    -------
+    Type[psgcopg2.extensions.connection]
+        psycopg2.connectによるconnectionオブジェクト
+    """
     pgpass = get_pgpass()
     host, port, database, user, password = pgpass.split(':')
     conn = psycopg2.connect(host=host, dbname=database, user=user, password=password, port=port)
@@ -121,25 +176,46 @@ def redshift_connect():
     return conn
 
 
-#
-# Redshiftへのコネクション設定ファイル取得
-#
-def get_pgpass():
+def get_pgpass() -> str:
+    """
+    Redshiftへのコネクション設定ファイル取得
+
+    Returns
+    -------
+    str
+        $HOME/.pgpassの先頭行を取得して返す
+    """
     pgpass_file = os.getenv('HOME') + '/.pgpass'
     with open(pgpass_file, 'r') as fd:
         return fd.readline().strip()
 
 
-#
-# Redshiftにpartitionを追加
-#
-def add_partition_to_redshift(conn, ymd):
+def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: str) -> None:
+    """
+    Redshiftにpartitionを追加
+
+    Parameters
+    ----------
+    conn: Type[psycopg2.extensions.connection]
+        Redshiftへの接続オブジェクト
+        redshift_connect()で取得
+    ymd: str
+        年月日(YYYYMMDD)の文字列
+    """
     with conn.cursor() as cur:
         cur.execute('alter table spectrum.location add if not exists partition(created_date=\'' + ymd + '\') '
                     + 'location \'s3://' + BUCKET + '/' + FOLDER_PARTED + 'created_date=' + ymd + '/\'')
 
 
-def main():
+def main() -> str:
+    """
+    メイン
+
+    Returns
+    -------
+    str
+        "success" or "error"
+    """
     temporary_file_dict = dict()
     try:
         logger.info('start.')
