@@ -1,20 +1,19 @@
 # coding=utf-8
 
 """
-retrieve_request用テストファイル
+collect_request用テストファイル
 """
 
 import unittest
 import boto3
 import uuid
 import warnings
-from retrieve_request import list_location_file, get_base_time, separate_location, get_timestamp_and_buffer,\
-    remove_location_file, redshift_connect, get_pgpass, add_partition_to_redshift
+from collect_request import redshift_connect, get_pgpass, select_and_write_location
 
 
-class TestRetrieveRequest(unittest.TestCase):
+class TestCollectRequest(unittest.TestCase):
     """
-    TestModule for retrieve_request
+    TestModule for collect_request
     """
     # TODO
     # TODO
