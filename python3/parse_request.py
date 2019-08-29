@@ -5,7 +5,7 @@
 APIGateway経由でLambdaとして呼び出される
 
 なお、全体の処理手順は以下の通り
-[parse-request]  ->  store-request  ->  retrieve-request  -> collect-request
+[parse_request]  ->  store_request  ->  retrieve_request  -> collect_request
 """
 
 import boto3
@@ -67,7 +67,7 @@ def parse_request(json: Dict[str, Any]) -> str:
     return user_id + ',' + str(latitude) + ',' + str(longitude) + ',' + str(timestamp)
 
 
-def push_location(location: str) -> None:
+def push_location(location: str, queue_name: str = QUEUE_NAME) -> None:
     """
     位置情報を表すCSVをSQSにpushする
 
@@ -76,9 +76,11 @@ def push_location(location: str) -> None:
     location: str
         位置情報を表す文字列。parse_requestでSQSに積まれた文字列
         "ユーザID,緯度,経度,タイムスタンプ"の文字列
+    queue_name: str
+        キュー名。デフォルトはQUEUE_NAME
     """
     sqs = boto3.client('sqs')
-    queue_url = sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
+    queue_url = sqs.get_queue_url(QueueName=queue_name)['QueueUrl']
     sqs.send_message(
         QueueUrl=queue_url,
         MessageBody=location

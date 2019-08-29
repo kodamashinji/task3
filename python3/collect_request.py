@@ -6,7 +6,7 @@ S3作業用フォルダ(s3://..../work)にあるオブジェクトを読み込�
 ただし、このプログラムを実行した当日のデータは一時保管用フォルダに戻されて、翌日以降に書き出される。
 
 なお、全体の処理手順は以下の通り
-parse-request  ->  store-request  ->  [retrieve-request]  -> collect-request
+parse_request  ->  store_request  ->  retrieve_request  -> [collect_request]
 """
 
 import boto3

@@ -5,7 +5,7 @@ SQSから取り出したリクエストデータ("ユーザID,緯度,経度,タ�
 CloudWatchによって定期的にlambdaとして呼び出される
 
 なお、全体の処理手順は以下の通り
-parse-request  ->  [store-request]  ->  retrieve-request  -> collect-request
+parse_request  ->  [store_request]  ->  retrieve_request  -> collect_request
 """
 
 import boto3
