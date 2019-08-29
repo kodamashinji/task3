@@ -21,9 +21,14 @@ BUCKET = 'me32as8cme32as8c-task3-location'
 FOLDER = 'work/'
 
 
-def retrieve_location() -> List[str]:
+def retrieve_location(queue_name: str = QUEUE_NAME) -> List[str]:
     """
     SQSに蓄えられたリクエストを取得し、重複を取り除いた位置情報一覧を取得する
+
+    Parameters
+    ----------
+    queue_name: str
+        リクエストを取得するQUEUEの名前
 
     Returns
     ------
@@ -33,7 +38,7 @@ def retrieve_location() -> List[str]:
     sqs = boto3.client('sqs')
     retrieved = set()  # 重複チェック用
     result = list()    # メソッドの結果
-    queue_url = sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
+    queue_url = sqs.get_queue_url(QueueName=queue_name)['QueueUrl']
     while True:
         messages = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
         if 'Messages' not in messages or len(messages['Messages']) == 0:  # キューが空か
@@ -49,18 +54,27 @@ def retrieve_location() -> List[str]:
     return result
 
 
-def write_location(locations: List[str]) -> None:
+def write_location(file_name: str, locations: List[str], bucket: str = BUCKET, prefix: str = FOLDER) -> None:
     """
     位置情報を作業用フォルダ(S3)に書き込む
     Parameters
     ----------
+    file_name: str
+        書き出すオブジェクトの名前
+
     locations: List[str]
         retrieve_location()で取得された結果。"ユーザID,緯度,経度,タイムスタンプ"の文字列のリスト
+
+    bucket: str
+        オブジェクトを書き込むS3バケット
+
+    prefix: str
+        オブジェクトのprefix
     """
     s3 = boto3.client('s3')
     s3.put_object(
-        Bucket=BUCKET,
-        Key=FOLDER + str(int(time.time())) + ".csv",
+        Bucket=bucket,
+        Key=prefix + file_name,
         Body="\n".join(locations) + "\n"
     )
 
@@ -85,7 +99,8 @@ def lambda_handler(event: Any, context: Any) -> str:
         logger.info('start.')
         locations = retrieve_location()
         if len(locations) > 0:
-            write_location(locations)
+            file_name = str(int(time.time())) + '.csv'
+            write_location(file_name, locations)
         logger.info('finished.')
         return 'success'
     except Exception as e:
