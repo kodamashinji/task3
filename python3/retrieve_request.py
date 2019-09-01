@@ -23,7 +23,6 @@ from typing import Dict, List, BinaryIO, Type
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-QUEUE_NAME = 'request-queue'
 BUCKET = 'me32as8cme32as8c-task3-location'
 FOLDER_WORK = 'work/'
 FOLDER_PARTED = 'parted/'
@@ -32,9 +31,16 @@ s3 = boto3.client('s3')
 tz = 9 * 60 * 60   # JST(+9:00)
 
 
-def list_location_file() -> List[str]:
+def list_location_file(bucket: str = BUCKET, prefix: str = FOLDER_WORK) -> List[str]:
     """
     作業用フォルダ(S3)のファイル一覧を取得する
+
+    Parameters
+    ----------
+    bucket: str
+        オブジェクトを書き込むS3バケット
+    prefix: str
+        オブジェクトのprefix
 
     Returns
     ------
@@ -45,23 +51,16 @@ def list_location_file() -> List[str]:
     result = []
 
     # フォルダ以下のファイル一覧を取得
-    response = s3.list_objects_v2(
-        Bucket=BUCKET,
-        Prefix=FOLDER_WORK
-    )
+    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
 
-    # フォルダ自身以外をの一覧を追加
-    result.extend([x['Key'] for x in response['Contents'] if x['Key'] != FOLDER_WORK])
+    # フォルダ自身以外を一覧を追加
+    result.extend([x['Key'] for x in response['Contents'] if x['Key'] != prefix])
 
     # 一度で取りきれなかった場合、取れなくなるまで繰り返す
     while 'NextContinuationToken' in response:
         token = response['NextContinuationToken']
-        response = s3.list_objects_v2(
-            Bucket=BUCKET,
-            Prefix=FOLDER_WORK,
-            ContinuationToken=token
-        )
-        result.extend([x['Key'] for x in response['Contents'] if x['Key'] != FOLDER_WORK])
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, ContinuationToken=token)
+        result.extend([x['Key'] for x in response['Contents'] if x['Key'] != prefix])
 
     return result
 
@@ -86,7 +85,7 @@ def get_base_time(unix_time: int) -> int:
     return local_base_time - tz
 
 
-def separate_location(file: str, temporary_file_dict: Dict[int, BinaryIO]) -> dict:
+def separate_location(file: str, temporary_file_dict: Dict[int, BinaryIO], bucket: str = BUCKET) -> dict:
     """
     レコードの基準時間毎に、保管用一時ファイルに振り分ける
 
@@ -96,13 +95,15 @@ def separate_location(file: str, temporary_file_dict: Dict[int, BinaryIO]) -> di
         ファイル名 (例: 'work/1566624557.csv')
     temporary_file_dict: Dict[int, BinaryIO]
         作成されたtempfile.NamedTemporaryFileを保管するdict
+    bucket: str
+        オブジェクトを書き込むS3バケット
 
     Returns
     -------
     Dict[int, BinaryIO]
         作成されたtempfile.NamedTemporaryFileを保管するdict
     """
-    with smart_open.open('s3://' + BUCKET + '/' + file, 'rb') as fd:
+    with smart_open.open('s3://' + bucket + '/' + file, 'rb') as fd:
         for line in fd:
             timestamp, buffer = get_timestamp_and_buffer(line)
             if timestamp > 0:                                   # 正常行か?
@@ -118,7 +119,7 @@ def separate_location(file: str, temporary_file_dict: Dict[int, BinaryIO]) -> di
 
 def get_timestamp_and_buffer(line: bytes) -> (int, bytes):
     """
-    "user_id,latitude,longtude, timestamp"のtimestamp部分を取得し、行全体のbyte列を返す
+    "user_id,latitude,longitude,timestamp"のtimestamp部分を取得し、行全体のbyte列を返す
     ただし、無効行の場合は[0, b'']を返す
 
     Parameters
@@ -134,9 +135,11 @@ def get_timestamp_and_buffer(line: bytes) -> (int, bytes):
     s = line.decode('ascii').strip()               # bytes -> str
     if len(s) > 0:
         try:
-            timestamp = int(s.rsplit(',', 1)[1])   # 最後のフィールド
-            buffer = bytes(s + '\n', 'ascii')      # str -> bytes
-            return timestamp, buffer
+            fields = s.split(',')
+            if len(fields) == 4:
+                timestamp = int(fields[3]) # 最後のフィールド
+                buffer = bytes(s + '\n', 'ascii')      # str -> bytes
+                return timestamp, buffer
         except IndexError:  # ","が無い
             pass
         except ValueError:  # timestampが数値じゃない
@@ -145,7 +148,7 @@ def get_timestamp_and_buffer(line: bytes) -> (int, bytes):
     return 0, b''
 
 
-def remove_location_file(file_list: List[str]) -> None:
+def remove_location_file(file_list: List[str], bucket: str = BUCKET) -> None:
     """
     処理済みのファイルを削除
 
@@ -154,9 +157,11 @@ def remove_location_file(file_list: List[str]) -> None:
     file_list: List[str]
         ファイル名の文字列一覧。
         (例) "work/123456.csv"
+    bucket: str
+        オブジェクトを書き込むS3バケット
     """
     for file in file_list:
-        s3.delete_object(Bucket=BUCKET, Key=file)
+        s3.delete_object(Bucket=bucket, Key=file)
 
 
 def redshift_connect() -> Type[psycopg2.extensions.connection]:
@@ -176,7 +181,7 @@ def redshift_connect() -> Type[psycopg2.extensions.connection]:
     return conn
 
 
-def get_pgpass() -> str:
+def get_pgpass(pgpass_file: str = None) -> str:
     """
     Redshiftへのコネクション設定ファイル取得
 
@@ -185,7 +190,8 @@ def get_pgpass() -> str:
     str
         $HOME/.pgpassの先頭行を取得して返す
     """
-    pgpass_file = os.getenv('HOME') + '/.pgpass'
+    if pgpass_file is None:
+        pgpass_file = os.getenv('HOME') + '/.pgpass'
     with open(pgpass_file, 'r') as fd:
         return fd.readline().strip()
 

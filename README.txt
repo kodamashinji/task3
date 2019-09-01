@@ -4,6 +4,7 @@ task3/
   aurora/                    --- RDBに関する実装 (今回は使用しないかも?)
   doc/                       --- 各種ドキュメント
     aws.txt                  --- 今回設定したaws設定のメモ
+    arch.pdf                 --- arch.pptxのPDF
     arch.pptx                --- 全体設計を説明するPowerPoint
     randomnote.txt           --- 思いついたものをひとまず書き留めているメモ
     requirement.txt          --- オリジナルの要求仕様
@@ -20,5 +21,6 @@ task3/
     test_parse_request.py    --- parse_request.pyのテストファイル
     test_store_request.py    --- store_request.pyのテストファイル
     test_retrieve_request.py --- retrieve_request.pyのテストファイル
+    test_collect_request.py  --- collect_request.pyのテストファイル
   redshift/                  --- Redshiftに関する実装
     ddl.sql                  --- Redshiftに投入されるDDL

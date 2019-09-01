@@ -37,6 +37,7 @@ class TestStoreRequest(unittest.TestCase):
                                  'LocationConstraint': 'ap-northeast-1'
                              },
                              ACL='private')
+
         # BOTO3かunittestの不具合避け
         warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>")
 
