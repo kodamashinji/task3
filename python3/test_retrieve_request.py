@@ -9,8 +9,9 @@ import boto3
 import uuid
 import os
 import warnings
+import tempfile
 from retrieve_request import list_location_file, get_base_time, separate_location, get_timestamp_and_buffer,\
-    remove_location_file, redshift_connect, get_pgpass, add_partition_to_redshift
+    remove_location_file, get_connection_string, get_date_str
 
 
 class TestRetrieveRequest(unittest.TestCase):
@@ -127,6 +128,25 @@ class TestRetrieveRequest(unittest.TestCase):
         self.assertEqual(get_base_time(1567231200), 1567177200)
         self.assertEqual(get_base_time(1567231200 - 1), 1567177200)
 
+    def test_get_date_str(self) -> None:
+        """
+        get_date_strのテスト
+        """
+        # 1567296000 = 2019/9/1 09:00:00(JST)
+        self.assertEqual(get_date_str(1567296000 + 1), '20190901')
+        self.assertEqual(get_date_str(1567296000), '20190901')
+        self.assertEqual(get_date_str(1567296000 - 1), '20190901')
+
+        # 1567263600 = 2019/9/1 00:00:00(JST)
+        self.assertEqual(get_date_str(1567263600 + 1), '20190901')
+        self.assertEqual(get_date_str(1567263600), '20190901')
+        self.assertEqual(get_date_str(1567263600 - 1), '20190831')
+
+        # 1567231200 = 2019/8/31 15:00:00(JST)
+        self.assertEqual(get_date_str(1567231200 + 1), '20190831')
+        self.assertEqual(get_date_str(1567231200), '20190831')
+        self.assertEqual(get_date_str(1567231200 - 1), '20190831')
+
     def test_separate_location(self) -> None:
         """
         separate_locationのテスト
@@ -175,3 +195,21 @@ class TestRetrieveRequest(unittest.TestCase):
         self.assertNotIn('work/1567177199.csv', key_set)
         self.assertNotIn('work/1567177200.csv', key_set)
         self.assertIn('work/1567177201.csv', key_set)
+
+    def test_get_connection_string(self) -> None:
+        """
+        get_connection_stringのテスト
+        """
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+        try:
+            with open(temp_file.name, 'wb') as fd:
+                fd.write(b'# Comment\n#\n\nhogehoge.com:5432:name:scott:tiger')
+            self.assertEqual(get_connection_string(temp_file.name),
+                             'dbname=name user=scott password=tiger host=hogehoge.com port=5432')
+            with open(temp_file.name, 'wb') as fd:
+                fd.write(b'hogehoge.com:5432:name:scott:tiger\n\n')
+            self.assertEqual(get_connection_string(temp_file.name),
+                             'dbname=name user=scott password=tiger host=hogehoge.com port=5432')
+        finally:
+            os.remove(temp_file.name)

@@ -16,6 +16,8 @@ import datetime
 import os
 import tempfile
 import sys
+import gzip
+import shutil
 import psycopg2
 import psycopg2.extensions
 from typing import Type, BinaryIO
@@ -30,23 +32,7 @@ s3 = boto3.client('s3')
 tz = 9 * 60 * 60   # JST(+9:00)
 
 
-def redshift_connect() -> Type[psycopg2.extensions.connection]:
-    """
-    Redshiftへのコネクション取得
-    接続情報は$HOME/.pgpassから取得する
-
-    Returns
-    -------
-    Type[psgcopg2.extensions.connection]
-        psycopg2.connectによるconnectionオブジェクト
-    """
-    pgpass = get_pgpass()
-    host, port, database, user, password = pgpass.split(':')
-    conn = psycopg2.connect(host=host, dbname=database, user=user, password=password, port=port)
-    return conn
-
-
-def get_pgpass() -> str:
+def get_connection_string(config_file: str = None) -> str:
     """
     Redshiftへのコネクション設定ファイル取得
 
@@ -55,9 +41,15 @@ def get_pgpass() -> str:
     str
         $HOME/.pgpassの先頭行を取得して返す
     """
-    pgpass_file = os.getenv('HOME') + '/.pgpass'
-    with open(pgpass_file, 'r') as fd:
-        return fd.readline().strip()
+    if config_file is None:
+        config_file = os.getenv('HOME') + '/.pgpass'
+    with open(config_file, 'r') as fd:
+        for line in fd:
+            s_line = line.strip()
+            if len(s_line) == 0 or s_line[0] == '#':
+                continue
+            host, port, dbname, user, password = s_line.split(':')
+            return 'dbname=' + dbname + ' user=' + user + ' password=' + password + ' host=' + host + ' port=' + port
 
 
 def select_and_write_location(ymd: str, result_file: BinaryIO) -> None:
@@ -71,7 +63,8 @@ def select_and_write_location(ymd: str, result_file: BinaryIO) -> None:
     result_file: BinaryIO
         一時ファイルのio
     """
-    with redshift_connect() as conn, result_file as fd:
+    connection_string = get_connection_string()
+    with psycopg2.connect(connection_string) as conn, result_file as fd:
         with conn.cursor() as cursor:
             cursor.execute('select user_id, latitude, longitude, created_at from spectrum.location where created_date=\'' + ymd + '\'')
             for row in cursor:
@@ -91,26 +84,22 @@ def main(ymd: str) -> str:
     str:
         "success" or "error"
     """
-    result_file = None
     try:
         logger.info('start.')
 
-        # 結果を保存する一時ファイル
-        result_file = tempfile.NamedTemporaryFile(delete=False)
+        with tempfile.TemporaryFile() as ftemp:
+            # Redshiftからqueryし、一時ファイルに圧縮して書き出す
+            with gzip.GzipFile(fileobj=ftemp, mode='w+b') as fout:
+                select_and_write_location(ymd, fout)
 
-        # Redshiftからqueryし、一時ファイルに書き出す
-        select_and_write_location(ymd, result_file)
-
-        # 一時ファイルをS3にアップロードする
-        s3.upload_file(Filename=result_file.name, Bucket=DOWNLOAD_BUCKET, Key=ymd + '.csv')
+            # 一時ファイルをS3にアップロードする
+            ftemp.seek(0)
+            s3.upload_fileobj(Fileobj=ftemp, Bucket=DOWNLOAD_BUCKET, Key=ymd + '.csv.zip')
 
         logger.info('finished.')
         return 'success'
     except Exception as e:
         logger.error(e)
-    finally:
-        if result_file is not None:
-            os.remove(result_file.name)
 
     return 'error'
 

@@ -16,6 +16,8 @@ import os
 import datetime
 import time
 import smart_open
+import gzip
+import shutil
 import psycopg2
 import psycopg2.extensions
 from typing import Dict, List, BinaryIO, Type
@@ -164,24 +166,7 @@ def remove_location_file(file_list: List[str], bucket: str = BUCKET) -> None:
         s3.delete_object(Bucket=bucket, Key=file)
 
 
-def redshift_connect() -> Type[psycopg2.extensions.connection]:
-    """
-    Redshiftへのコネクション取得
-    接続情報は$HOME/.pgpassから取得する
-
-    Returns
-    -------
-    Type[psgcopg2.extensions.connection]
-        psycopg2.connectによるconnectionオブジェクト
-    """
-    pgpass = get_pgpass()
-    host, port, database, user, password = pgpass.split(':')
-    conn = psycopg2.connect(host=host, dbname=database, user=user, password=password, port=port)
-    conn.autocommit = True
-    return conn
-
-
-def get_pgpass(pgpass_file: str = None) -> str:
+def get_connection_string(config_file: str = None) -> str:
     """
     Redshiftへのコネクション設定ファイル取得
 
@@ -190,10 +175,15 @@ def get_pgpass(pgpass_file: str = None) -> str:
     str
         $HOME/.pgpassの先頭行を取得して返す
     """
-    if pgpass_file is None:
-        pgpass_file = os.getenv('HOME') + '/.pgpass'
-    with open(pgpass_file, 'r') as fd:
-        return fd.readline().strip()
+    if config_file is None:
+        config_file = os.getenv('HOME') + '/.pgpass'
+    with open(config_file, 'r') as fd:
+        for line in fd:
+            s_line = line.strip()
+            if len(s_line) == 0 or s_line[0] == '#':
+                continue
+            host, port, dbname, user, password = s_line.split(':')
+            return 'dbname=' + dbname + ' user=' + user + ' password=' + password + ' host=' + host + ' port=' + port
 
 
 def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: str) -> None:
@@ -211,6 +201,22 @@ def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: s
     with conn.cursor() as cur:
         cur.execute('alter table spectrum.location add if not exists partition(created_date=\'' + ymd + '\') '
                     + 'location \'s3://' + BUCKET + '/' + FOLDER_PARTED + 'created_date=' + ymd + '/\'')
+
+
+def get_date_str(unix_time: int) -> str:
+    """
+
+    Parameters
+    ----------
+    unix_time: int
+        日付を求める時間
+
+    Returns
+    -------
+    str
+        "YYYYMMDD"形式の文字列(JST)
+    """
+    return datetime.datetime.utcfromtimestamp(unix_time + tz).strftime('%Y%m%d')  # YYYYMMDD
 
 
 def main() -> str:
@@ -239,15 +245,27 @@ def main() -> str:
         now = int(time.time())
         today_base_time = get_base_time(now)
         upload_file_name = str(now) + '.csv'
-        with redshift_connect() as conn:
+        connection_string = get_connection_string()
+        with psycopg2.connect(connection_string) as conn:
+            conn.autocommit = True  # ALTER TABLEはBEGIN内で使えないので、autocommit=Trueにしておく
+
             for base_time, temp_file in temporary_file_dict.items():
                 if base_time == today_base_time:
+                    # 本日分のデータはwork/ディレクトリに送り返す
                     s3.upload_file(Filename=temp_file.name, Bucket=BUCKET, Key=FOLDER_WORK + upload_file_name)
                 else:
-                    ymd = datetime.datetime.utcfromtimestamp(base_time + tz).strftime('%Y%m%d')  # YYYYMMDD
+                    # 前日までのデータは圧縮してS3のparted/フォルダにコピーする
+                    ymd = get_date_str(base_time)  # YYYYMMDD
                     add_partition_to_redshift(conn, ymd)
-                    s3.upload_file(Filename=temp_file.name, Bucket=BUCKET,
-                                   Key=FOLDER_PARTED + 'created_date=' + ymd + '/' + upload_file_name)
+                    with tempfile.TemporaryFile() as ftemp:
+                        # 圧縮
+                        with open(temp_file.name, 'rb') as fin, gzip.GzipFile(fileobj=ftemp, mode='w+b') as fout:
+                            shutil.copyfileobj(fin, fout)
+
+                        # アップロード
+                        ftemp.seek(0)
+                        s3.upload_fileobj(Fileobj=ftemp, Bucket=BUCKET,
+                                          Key=FOLDER_PARTED + 'created_date=' + ymd + '/' + upload_file_name + '.gz')
 
         # 処理済みのファイルを削除
         remove_location_file(file_list)

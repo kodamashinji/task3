@@ -5,43 +5,29 @@ collect_request用テストファイル
 """
 
 import unittest
-import boto3
-import uuid
-import warnings
-from collect_request import redshift_connect, get_pgpass, select_and_write_location
+import os
+import tempfile
+from collect_request import get_connection_string
 
 
 class TestCollectRequest(unittest.TestCase):
     """
     TestModule for collect_request
     """
-    # TODO
-    # TODO
-
-
-    sqs = None
-    queue_url = None
-    queue_name = 'test' + str(uuid.uuid4())
-
-    @classmethod
-    def setUpClass(cls) -> None:
+    def test_get_connection_string(self) -> None:
         """
-        SQSクライアントを作成し、SQSにテスト用のキューを作成する
+        get_connection_stringのテスト
         """
-        cls.sqs = boto3.client('sqs')
-        response = cls.sqs.create_queue(
-            QueueName=cls.queue_name
-        )
-        cls.queue_url = response['QueueUrl']
-        # BOTO3かunittestの不具合避け
-        warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>")
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        """
-        作成したキューの後片付け
-        """
-        cls.sqs.delete_queue(
-            QueueUrl=cls.queue_url
-        )
-
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+        try:
+            with open(temp_file.name, 'wb') as fd:
+                fd.write(b'# Comment\n#\n\nhogehoge.com:5432:name:scott:tiger')
+            self.assertEqual(get_connection_string(temp_file.name),
+                             'dbname=name user=scott password=tiger host=hogehoge.com port=5432')
+            with open(temp_file.name, 'wb') as fd:
+                fd.write(b'hogehoge.com:5432:name:scott:tiger\n\n')
+            self.assertEqual(get_connection_string(temp_file.name),
+                             'dbname=name user=scott password=tiger host=hogehoge.com port=5432')
+        finally:
+            os.remove(temp_file.name)
