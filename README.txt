@@ -1,7 +1,8 @@
 ディレクトリ構成
 
 task3/
-  aurora/                    --- RDBに関する実装 (今回は使用しないかも?)
+  aurora/                    --- RDBに関する実装
+    ddl.sql                  --- Aurora MySQL用のDDL (今回は使用していない)
   doc/                       --- 各種ドキュメント
     aws.txt                  --- 今回設定したaws設定のメモ
     arch.pdf                 --- arch.pptxのPDF
