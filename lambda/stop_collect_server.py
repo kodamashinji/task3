@@ -6,7 +6,7 @@
 
 import boto3
 import logging
-from typing import Any
+from typing import Any, Dict
 
 EC2_INSTANCE_ID = 'i-0f2ace5d656e6fa62'
 
@@ -33,7 +33,7 @@ def ec2_stop() -> None:
         raise Exception('ec2 stop error', response)
 
 
-def lambda_handler(event: Any, context: Any):
+def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
     """
     EC2サーバを終了する
 
@@ -46,14 +46,21 @@ def lambda_handler(event: Any, context: Any):
 
     Returns
     ------
-    str
+    Dict[str, Any]
         "success" or "error"
     """
     try:
         logger.info('start.')
         ec2_stop()
         logger.info('finished.')
-        return 'success'
+        return {
+            'statusCode': 200,
+            'body': 'success',
+        }
     except Exception as e:
         logger.error(e)
-        return 'error'
+
+    return {
+        'statusCode': 500,
+        'body': 'error',
+    }

@@ -11,6 +11,7 @@ task3/
     requirement.txt                 --- オリジナルの要求仕様
     specification.txt               --- 実装に使用した要求仕様 (オリジナルに変更追加を行った内容)
   lambda/                           --- Lambda用ソース (python3)
+    get_location_list.py            --- 結果をダウンロードするためのAPI Gatewayから呼び出されるlambda
     parse_request.py                --- JSONデータを処理してSQSにリクエストを積むlambda。API Gateway経由で呼び出される
     start_collect_server.py         --- ec2(加工用サーバ)立ち上げ用lambda
     stop_collect_server.py          --- ec2(加工用サーバ)終了用lambda

@@ -11,7 +11,7 @@ parse_request  ->  [store_request]  ->  retrieve_request  -> collect_request
 import boto3
 import logging
 import time
-from typing import Any, List
+from typing import Any, List, Dict
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -79,7 +79,7 @@ def write_location(file_name: str, locations: List[str], bucket: str = BUCKET, p
     )
 
 
-def lambda_handler(event: Any, context: Any) -> str:
+def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
     """
     Lambdaからinvokeされる関数
 
@@ -92,7 +92,7 @@ def lambda_handler(event: Any, context: Any) -> str:
 
     Returns
     ------
-    str
+    Dict[str, Any]
         "success" or "error"
     """
     try:
@@ -102,11 +102,17 @@ def lambda_handler(event: Any, context: Any) -> str:
             file_name = str(int(time.time())) + '.csv'
             write_location(file_name, locations)
         logger.info('finished.')
-        return 'success'
+        return {
+            'statusCode': 200,
+            'body': 'success',
+        }
     except Exception as e:
         logger.error(e)
 
-    return 'error'
+    return {
+        'statusCode': 500,
+        'body': 'error',
+    }
 
 
 if __name__ == "__main__":

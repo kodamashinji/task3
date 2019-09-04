@@ -24,7 +24,6 @@ from get_connection_string import get_connection_string
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-QUEUE_NAME = 'request-queue'
 DOWNLOAD_BUCKET = 'me32as8cme32as8c-task3-download'
 
 s3 = boto3.client('s3')

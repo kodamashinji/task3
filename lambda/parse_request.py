@@ -87,7 +87,7 @@ def push_location(location: str, queue_name: str = QUEUE_NAME) -> None:
     )
 
 
-def lambda_handler(event: Dict[str, Any], context) -> str:
+def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
     Lambdaからinvokeされる関数
 
@@ -100,7 +100,7 @@ def lambda_handler(event: Dict[str, Any], context) -> str:
 
     Returns
     ------
-    str
+    Dict[str, Any]
         "success" or "error"
     """
     try:
@@ -108,7 +108,10 @@ def lambda_handler(event: Dict[str, Any], context) -> str:
         location = parse_request(event)
         push_location(location)
         logger.info('finished.')
-        return 'success'
+        return {
+            'statusCode': 200,
+            'body': 'success',
+        }
     except KeyError:
         logger.error('invalid json format')
     except ValueError:
@@ -116,7 +119,10 @@ def lambda_handler(event: Dict[str, Any], context) -> str:
     except Exception as e:
         logger.error(e)
 
-    return 'error'
+    return {
+        'statusCode': 500,
+        'body': 'error',
+    }
 
 
 if __name__ == "__main__":

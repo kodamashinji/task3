@@ -45,7 +45,34 @@ SQS:
 
 API Gateway:
   API名: position
-    メソッド: /register  POST   lambda : parse-request
+    メソッド リソース: POST /register
+      統合リクエスト:
+        Lambda : parse-request
+
+    メソッド リソース: GET /getlocation/{ymd}
+      統合リクエスト:
+        Lambda : get-location-list
+        マッピングテンプレート:
+          コンテンツタイプ: application/json
+            {
+                "ymd":  "$input.params('ymd')"
+            }
+      メソッドレスポンス:
+        ステータス: 301
+          レスポンスヘッダー: Location
+        ステータス: 404
+          レスポンス本文
+          コンテンツタイプ: application/json
+      統合レスポンス:
+        ステータス: 301 (デフォルト)
+          ヘッダーマッピング:
+            レスポンスヘッダー: Location
+              integration.response.body.Location
+        ステータス: 404 (エラー正規表現: '.*not found.*'
+          マッピングテンプレート:
+            コンテンツタイプ: application/json
+              {}
+
     デプロイ:  https://gaau8g4xac.execute-api.ap-northeast-1.amazonaws.com/production
     リソースポリシー:
     {
@@ -55,7 +82,10 @@ API Gateway:
                 "Effect": "Allow",
                 "Principal": "*",
                 "Action": "execute-api:Invoke",
-                "Resource": "arn:aws:execute-api:ap-northeast-1:026845558380:gaau8g4xac/production/POST/register"
+                "Resource": [
+                    "arn:aws:execute-api:ap-northeast-1:026845558380:gaau8g4xac/production/POST/register",
+                    "arn:aws:execute-api:ap-northeast-1:026845558380:gaau8g4xac/production/GET/getlocation/*"
+                ]
             }
         ]
     }
