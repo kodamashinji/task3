@@ -21,6 +21,7 @@ import shutil
 import psycopg2
 import psycopg2.extensions
 from typing import Dict, List, BinaryIO, Type
+from get_connection_string import get_connection_string
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -164,26 +165,6 @@ def remove_location_file(file_list: List[str], bucket: str = BUCKET) -> None:
     """
     for file in file_list:
         s3.delete_object(Bucket=bucket, Key=file)
-
-
-def get_connection_string(config_file: str = None) -> str:
-    """
-    Redshiftへのコネクション設定ファイル取得
-
-    Returns
-    -------
-    str
-        $HOME/.pgpassの先頭行を取得して返す
-    """
-    if config_file is None:
-        config_file = os.getenv('HOME') + '/.pgpass'
-    with open(config_file, 'r') as fd:
-        for line in fd:
-            s_line = line.strip()
-            if len(s_line) == 0 or s_line[0] == '#':
-                continue
-            host, port, dbname, user, password = s_line.split(':')
-            return 'dbname=' + dbname + ' user=' + user + ' password=' + password + ' host=' + host + ' port=' + port
 
 
 def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: str) -> None:

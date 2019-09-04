@@ -9,6 +9,9 @@ import boto3
 import uuid
 import warnings
 from typing import List
+
+import sys
+sys.path.append('..')
 from store_request import retrieve_location, write_location
 
 

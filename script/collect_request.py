@@ -13,14 +13,13 @@ import boto3
 import logging
 import time
 import datetime
-import os
 import tempfile
 import sys
 import gzip
-import shutil
 import psycopg2
 import psycopg2.extensions
 from typing import Type, BinaryIO
+from get_connection_string import get_connection_string
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -32,27 +31,7 @@ s3 = boto3.client('s3')
 tz = 9 * 60 * 60   # JST(+9:00)
 
 
-def get_connection_string(config_file: str = None) -> str:
-    """
-    Redshiftへのコネクション設定ファイル取得
-
-    Returns
-    -------
-    str
-        $HOME/.pgpassの先頭行を取得して返す
-    """
-    if config_file is None:
-        config_file = os.getenv('HOME') + '/.pgpass'
-    with open(config_file, 'r') as fd:
-        for line in fd:
-            s_line = line.strip()
-            if len(s_line) == 0 or s_line[0] == '#':
-                continue
-            host, port, dbname, user, password = s_line.split(':')
-            return 'dbname=' + dbname + ' user=' + user + ' password=' + password + ' host=' + host + ' port=' + port
-
-
-def select_and_write_location(ymd: str, result_file: BinaryIO) -> None:
+def select_and_write_location(ymd: str, result_file: BinaryIO) -> int:
     """
     Redshiftから該当日のデータを取得し、一時ファイルに書き出す
 
@@ -62,13 +41,22 @@ def select_and_write_location(ymd: str, result_file: BinaryIO) -> None:
         該当日となる年月日 (YYYYMMDD)
     result_file: BinaryIO
         一時ファイルのio
+
+    Returns
+    -------
+    int
+        書き込んだレコード数
     """
+    records = 0
     connection_string = get_connection_string()
     with psycopg2.connect(connection_string) as conn, result_file as fd:
         with conn.cursor() as cursor:
             cursor.execute('select user_id, latitude, longitude, created_at from spectrum.location where created_date=\'' + ymd + '\'')
             for row in cursor:
                 fd.write(bytes(','.join([str(x) for x in row]) + '\r\n', 'ascii'))
+                records = records + 1
+
+    return records
 
 
 def main(ymd: str) -> str:
@@ -90,11 +78,12 @@ def main(ymd: str) -> str:
         with tempfile.TemporaryFile() as ftemp:
             # Redshiftからqueryし、一時ファイルに圧縮して書き出す
             with gzip.GzipFile(fileobj=ftemp, mode='w+b') as fout:
-                select_and_write_location(ymd, fout)
+                records = select_and_write_location(ymd, fout)
 
-            # 一時ファイルをS3にアップロードする
-            ftemp.seek(0)
-            s3.upload_fileobj(Fileobj=ftemp, Bucket=DOWNLOAD_BUCKET, Key=ymd + '.csv.zip')
+            # 空ファイルで無ければ、一時ファイルをS3にアップロードする
+            if records > 0:
+                ftemp.seek(0)
+                s3.upload_fileobj(Fileobj=ftemp, Bucket=DOWNLOAD_BUCKET, Key=ymd + '.csv.zip')
 
         logger.info('finished.')
         return 'success'

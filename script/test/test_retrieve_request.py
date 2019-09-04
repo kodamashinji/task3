@@ -10,8 +10,11 @@ import uuid
 import os
 import warnings
 import tempfile
+
+import sys
+sys.path.append('..')
 from retrieve_request import list_location_file, get_base_time, separate_location, get_timestamp_and_buffer,\
-    remove_location_file, get_connection_string, get_date_str
+    remove_location_file, get_date_str
 
 
 class TestRetrieveRequest(unittest.TestCase):
@@ -195,21 +198,3 @@ class TestRetrieveRequest(unittest.TestCase):
         self.assertNotIn('work/1567177199.csv', key_set)
         self.assertNotIn('work/1567177200.csv', key_set)
         self.assertIn('work/1567177201.csv', key_set)
-
-    def test_get_connection_string(self) -> None:
-        """
-        get_connection_stringのテスト
-        """
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        temp_file.close()
-        try:
-            with open(temp_file.name, 'wb') as fd:
-                fd.write(b'# Comment\n#\n\nhogehoge.com:5432:name:scott:tiger')
-            self.assertEqual(get_connection_string(temp_file.name),
-                             'dbname=name user=scott password=tiger host=hogehoge.com port=5432')
-            with open(temp_file.name, 'wb') as fd:
-                fd.write(b'hogehoge.com:5432:name:scott:tiger\n\n')
-            self.assertEqual(get_connection_string(temp_file.name),
-                             'dbname=name user=scott password=tiger host=hogehoge.com port=5432')
-        finally:
-            os.remove(temp_file.name)

@@ -1,16 +1,19 @@
 # coding=utf-8
 
 """
-collect_request用テストファイル
+get_connection_string用テストファイル
 """
 
 import unittest
 import os
 import tempfile
-from collect_request import get_connection_string
+
+import sys
+sys.path.append('..')
+from get_connection_string import get_connection_string
 
 
-class TestCollectRequest(unittest.TestCase):
+class TestGetConnectionString(unittest.TestCase):
     """
     TestModule for collect_request
     """

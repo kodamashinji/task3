@@ -8,6 +8,9 @@ import unittest
 import boto3
 import uuid
 import warnings
+
+import sys
+sys.path.append('..')
 from parse_request import parse_request, push_location
 
 
