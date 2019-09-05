@@ -33,13 +33,16 @@ def get_key(event: Dict[str, Any]) -> str:
     -------
     str:
         対象となるオブジェクトのS3上のキー
+
+    Raises
+    ------
+    KeyError
+        eventにymdキーが含まれない
     """
-    if 'ymd' not in event:
-        raise Exception('no ymd')
-    return event['ymd'] + '.csv.zip'
+    return event['ymd'] + '.csv.gz'
 
 
-def check_file(key: str) -> None:
+def check_file(key: str, bucket: str = DOWNLOAD_BUCKET) -> None:
     """
     S3上に指定されたキーのオブジェクトが存在するかどうかを調べる
 
@@ -47,16 +50,20 @@ def check_file(key: str) -> None:
     ----------
     key: str
         対象となるS3オブジェクトのキー
+    bucket: str
+        キーが含まれるS3バケット名
 
     Raises
     ------
     botocore.exceptions.ClientError
         オブジェクトが無ければ例外
+    botocore.exceptions.ParamValidationError
+        オブジェクトが無ければ例外
     """
-    s3.head_object(Bucket=DOWNLOAD_BUCKET, Key=key)
+    s3.head_object(Bucket=bucket, Key=key)
 
 
-def get_presigned_url(key: str) -> str:
+def get_presigned_url(key: str, bucket: str = DOWNLOAD_BUCKET) -> str:
     """
     指定されたキーの署名付きURLを返す
 
@@ -64,6 +71,8 @@ def get_presigned_url(key: str) -> str:
     ----------
     key: str
         対象となるS3オブジェクトのキー
+    bucket: str
+        キーが含まれるS3バケット名
 
     Returns
     -------
@@ -72,7 +81,7 @@ def get_presigned_url(key: str) -> str:
     """
     return s3.generate_presigned_url(
         ClientMethod='get_object',
-        Params={'Bucket': DOWNLOAD_BUCKET, 'Key': key},
+        Params={'Bucket': bucket, 'Key': key},
         ExpiresIn=300,
         HttpMethod='GET'
     )

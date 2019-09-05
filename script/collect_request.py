@@ -82,7 +82,7 @@ def main(ymd: str) -> str:
             # 空ファイルで無ければ、一時ファイルをS3にアップロードする
             if records > 0:
                 ftemp.seek(0)
-                s3.upload_fileobj(Fileobj=ftemp, Bucket=DOWNLOAD_BUCKET, Key=ymd + '.csv.zip')
+                s3.upload_fileobj(Fileobj=ftemp, Bucket=DOWNLOAD_BUCKET, Key=ymd + '.csv.gz')
 
         logger.info('finished.')
         return 'success'
