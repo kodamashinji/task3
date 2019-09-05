@@ -10,11 +10,12 @@ import uuid
 import os
 import warnings
 import tempfile
+import gzip
 
 import sys
 sys.path.append('..')
 from retrieve_request import list_location_file, get_base_time, separate_location, get_timestamp_and_buffer,\
-    remove_location_file, get_date_str
+    remove_location_file, get_date_str, compress_and_upload
 
 
 class TestRetrieveRequest(unittest.TestCase):
@@ -198,3 +199,22 @@ class TestRetrieveRequest(unittest.TestCase):
         self.assertNotIn('work/1567177199.csv', key_set)
         self.assertNotIn('work/1567177200.csv', key_set)
         self.assertIn('work/1567177201.csv', key_set)
+
+    def test_compress_and_upload(self) -> None:
+        """
+        compress_and_uploadのテスト
+        """
+        temp = tempfile.NamedTemporaryFile(delete=False)
+        try:
+            temp.write(b'3313c918-55e4-4d15-879e-d9fb076a86d0,35.7,135.1,1567263601\n')
+            temp.close()
+
+            compress_and_upload(temp.name, 'uploaded.csv', '20190826', bucket=self.bucket_name, prefix='parted/')
+
+            r = self.s3.get_object(Bucket=self.bucket_name, Key='parted/created_date=20190826/uploaded.csv.gz')
+            self.assertIn('Body', r)
+            body = r['Body'].read()
+            decompressed = gzip.decompress(body)
+            self.assertEqual(decompressed, b'3313c918-55e4-4d15-879e-d9fb076a86d0,35.7,135.1,1567263601\n')
+        finally:
+            os.remove(temp.name)

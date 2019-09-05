@@ -186,6 +186,7 @@ def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: s
 
 def get_date_str(unix_time: int) -> str:
     """
+    指定されたunix_timeをJSTの日付に変換する
 
     Parameters
     ----------
@@ -198,6 +199,39 @@ def get_date_str(unix_time: int) -> str:
         "YYYYMMDD"形式の文字列(JST)
     """
     return datetime.datetime.utcfromtimestamp(unix_time + tz).strftime('%Y%m%d')  # YYYYMMDD
+
+
+def compress_and_upload(source_file_name: str, upload_file_name: str, ymd: str,
+                        bucket: str = BUCKET, prefix: str = FOLDER_PARTED) -> None:
+    """
+    指定されたファイルを圧縮し、S3にアップロードする
+
+    Parameters
+    ----------
+    source_file_name: str
+        コピー元となるローカルソース
+
+    upload_file_name: str
+        アップロードするオブジェクト名。実際のオブジェクト名は、このオブジェクト名に".gz"が付与される
+
+    ymd: str
+        アップロードするオブジェクトが格納されるパーティションフォルダ用の日付
+
+    bucket: str
+        オブジェクトを格納するバケット名
+
+    prefix: str
+        オブジェクトを格納するフォルダ(prefix)
+    """
+    with tempfile.TemporaryFile() as fd_temp:
+        # 圧縮
+        with open(source_file_name, 'rb') as fd_in, gzip.GzipFile(fileobj=fd_temp, mode='w+b') as fd_out:
+            shutil.copyfileobj(fd_in, fd_out)
+
+        # アップロード
+        fd_temp.seek(0)
+        s3.upload_fileobj(Fileobj=fd_temp, Bucket=bucket,
+                          Key=prefix + 'created_date=' + ymd + '/' + upload_file_name + '.gz')
 
 
 def main() -> str:
@@ -238,15 +272,7 @@ def main() -> str:
                     # 前日までのデータは圧縮してS3のparted/フォルダにコピーする
                     ymd = get_date_str(base_time)  # YYYYMMDD
                     add_partition_to_redshift(conn, ymd)
-                    with tempfile.TemporaryFile() as ftemp:
-                        # 圧縮
-                        with open(temp_file.name, 'rb') as fin, gzip.GzipFile(fileobj=ftemp, mode='w+b') as fout:
-                            shutil.copyfileobj(fin, fout)
-
-                        # アップロード
-                        ftemp.seek(0)
-                        s3.upload_fileobj(Fileobj=ftemp, Bucket=BUCKET,
-                                          Key=FOLDER_PARTED + 'created_date=' + ymd + '/' + upload_file_name + '.gz')
+                    compress_and_upload(temp_file.name, upload_file_name, ymd)
 
         # 処理済みのファイルを削除
         remove_location_file(file_list)
