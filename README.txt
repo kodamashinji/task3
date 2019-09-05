@@ -17,12 +17,12 @@ task3/
     stop_collect_server.py          --- ec2(加工用サーバ)終了用lambda
     store_request.py                --- SQSからリクエストを取り出し、まとめてS3に書き出す1lambda。数分毎に呼び出される
     test/
+      test_get_location_list.py     --- get_location_list.pyのテストファイル
       test_parse_request.py         --- parse_request.pyのテストファイル
       test_store_request.py         --- store_request.pyのテストファイル
   script/                           --- 各種プログラム (python3, shell-script)
     collect_request.py              --- Redshiftから指定日のレコードを読み込み、CSVとしてS3のダウンロード可能なフォルダに書き出す。
                                         加工サーバ内で日付変更後に呼び出される。
-    dummy-data.sh                   --- ダミーデータ投入用スクリプト
     get_connection_string.py        --- collect, retrieve共通のRedshift接続文字列取得用スクリプト
     retrieve-and-collect.sh         --- retrieve_request, collect_requestを呼び出した後、Lambda stop-collect-serverを呼び出すスクリプト
     retrieve_request.py             --- S3のファイルを読み込み、レコードを日付毎に分けて別フォルダに書き出すプログラム。
@@ -31,5 +31,7 @@ task3/
       test_collect_request.py       --- collect_request.pyのテストファイル
       test_get_connection_string.py --- get_connection_string.pyのテストファイル
       test_retrieve_request.py      --- retrieve_request.pyのテストファイル
+      dummy-data.sh                 --- ダミーデータ投入用スクリプト
+      dummy_data_maker.py           --- ダミーデータ投入用スクリプト生成用スクリプト
   redshift/                         --- Redshiftに関する実装
     ddl.sql                         --- Redshiftに投入されるDDL
