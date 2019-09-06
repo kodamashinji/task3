@@ -85,7 +85,8 @@ class TestStoreRequest(unittest.TestCase):
         self.maxDiff = None
         self.assertEqual(body.decode('ascii'), self.dummyObjectBody())
 
-    def dummyLocationList(self) -> List[str]:
+    @staticmethod
+    def dummyLocationList() -> List[str]:
         """
         ダミー位置情報のデータ
         15件あるが、重複が2件あり、unique件数は13件
@@ -112,7 +113,8 @@ class TestStoreRequest(unittest.TestCase):
             'cf5bff5c-2ffe-4f18-9593-bc666313f809,35.744947,139.720168,1555055100'
         ]
 
-    def dummyObjectBody(self) -> str:
+    @staticmethod
+    def dummyObjectBody() -> str:
         """
         ファイルに保存されている(はず)のデータ
         "\n".join(sorted(list(set(dummyLocationList)))) + "\n"
@@ -135,4 +137,3 @@ cf5bff5c-2ffe-4f18-9593-bc666313f808,35.744947,139.720168,1555055100
 cf5bff5c-2ffe-4f18-9593-bc666313f809,35.744947,139.720168,1555055100
 cf5bff5c-2ffe-4f18-9593-bc666313f809,35.744947,139.720168,1555055101
 """
-
