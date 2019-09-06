@@ -25,7 +25,6 @@ class TestGetLocationList(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         """
-        SQSクライアントを作成し、SQSにテスト用のキューを作成する
         S3クライアントを作成し、テスト用バケットを用意する
         """
         cls.s3 = boto3.client('s3')

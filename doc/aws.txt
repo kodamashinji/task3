@@ -115,6 +115,7 @@ Redshift:
     パブリックアクセス可能: Yes
     エンドポイント: task3.coni1ixwsfmu.ap-northeast-1.redshift.amazonaws.com:5439
 
+
 CloudWatch Events:
   名前: call-start-collect-server
     cron式: 15 15 * * ? *
