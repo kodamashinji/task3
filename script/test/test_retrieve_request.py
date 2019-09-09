@@ -27,10 +27,28 @@ class TestRetrieveRequest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         """
-        S3クライアントを作成し、テスト用バケットを用意する
+        テスト用バケットを用意するなど
         """
         cls.s3 = boto3.client('s3')
         cls.bucket_name = 'task3test' + str(uuid.uuid4())
+
+        cls.setUpS3()
+
+        # BOTO3かunittestの不具合避け
+        warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """
+        後片付け
+        """
+        cls.tearDownS3()
+
+    @classmethod
+    def setUpS3(cls) -> None:
+        """
+        テスト用バケットを用意する
+        """
         cls.s3.create_bucket(Bucket=cls.bucket_name,
                              CreateBucketConfiguration={
                                  'LocationConstraint': 'ap-northeast-1'
@@ -74,13 +92,10 @@ class TestRetrieveRequest(unittest.TestCase):
         cls.s3.put_object(Bucket=cls.bucket_name, Key='work/1567177199.csv',
                           Body=bytes('3313c918-55e4-4d15-879e-d9fb076a86d0,35.7,135.1,1567177199\n', 'ascii'))
 
-        # BOTO3かunittestの不具合避け
-        warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>")
-
     @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDownS3(cls) -> None:
         """
-        作成したテスト用バケットの後片付け
+        テスト用バケットの後片付け
         """
         request = cls.s3.list_objects_v2(Bucket=cls.bucket_name)
         keys = [c['Key'] for c in request['Contents']]
