@@ -11,17 +11,18 @@ parse_request  ->  [store_request]  ->  retrieve_request  -> collect_request
 import boto3
 import logging
 import time
+import os
 from typing import Any, List, Dict
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-QUEUE_NAME = 'request-queue'
-BUCKET = 'me32as8cme32as8c-task3-location'
-FOLDER = 'work/'
+DEFAULT_QUEUE_NAME = 'request-queue'
+DEFAULT_WORK_BUCKET = 'me32as8cme32as8c-task3-location'
+DEFAULT_WORK_FOLDER = 'work/'
 
 
-def retrieve_location(queue_name: str = QUEUE_NAME) -> List[str]:
+def retrieve_location(queue_name: str) -> List[str]:
     """
     SQSに蓄えられたリクエストを取得し、重複を取り除いた位置情報一覧を取得する
 
@@ -54,7 +55,7 @@ def retrieve_location(queue_name: str = QUEUE_NAME) -> List[str]:
     return result
 
 
-def write_location(file_name: str, locations: List[str], bucket: str = BUCKET, prefix: str = FOLDER) -> None:
+def write_location(file_name: str, locations: List[str], bucket: str, prefix: str) -> None:
     """
     位置情報を作業用フォルダ(S3)に書き込む
     Parameters
@@ -97,10 +98,15 @@ def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
     """
     try:
         logger.info('start.')
-        locations = retrieve_location()
+
+        queue_name = os.environ.get('QUEUE_NAME', DEFAULT_QUEUE_NAME)
+        bucket = os.environ.get('WORK_BUCKET', DEFAULT_WORK_BUCKET)
+        folder = os.environ.get('WORK_FOLDER', DEFAULT_WORK_FOLDER)
+
+        locations = retrieve_location(queue_name)
         if len(locations) > 0:
             file_name = str(int(time.time())) + '.csv'
-            write_location(file_name, locations)
+            write_location(file_name, locations, bucket, folder)
         logger.info('finished.')
         return {
             'statusCode': 200,

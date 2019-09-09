@@ -8,11 +8,12 @@ import unittest
 import boto3
 import uuid
 import warnings
+import os
 from typing import List
 
 import sys
 sys.path.append('..')
-from store_request import retrieve_location, write_location
+from store_request import retrieve_location, write_location, lambda_handler
 
 
 class TestStoreRequest(unittest.TestCase):
@@ -84,6 +85,52 @@ class TestStoreRequest(unittest.TestCase):
         body = result['Body'].read()
         self.maxDiff = None
         self.assertEqual(body.decode('ascii'), self.dummyObjectBody())
+
+    def test_lambda_handler(self) -> None:
+        """
+        lambda_handler関数のテスト
+        """
+        old_queue_name = os.environ.get('QUEUE_NAME')
+        old_bucket = os.environ.get('WORK_BUCKET')
+        old_folder = os.environ.get('WORK_FOLDER')
+
+        os.environ['QUEUE_NAME'] = self.queue_name
+        os.environ['WORK_BUCKET'] = self.bucket_name
+        os.environ['WORK_FOLDER'] = 'work/'
+
+        # ダミーデータ
+        for location in self.dummyLocationList():
+            self.sqs.send_message(QueueUrl=self.queue_url, MessageBody=location)
+
+        lambda_handler({}, None)
+
+        list_object = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix='work/')
+        self.assertIn('Contents', list_object)
+        self.assertEqual(len(list_object['Contents']), 1)
+        key = list_object['Contents'][0]['Key']
+
+        get_object = self.s3.get_object(Bucket=self.bucket_name, Key=key)
+        self.assertIn('Body', get_object)
+        body = get_object['Body'].read()
+
+        self.assertEqual(sorted(body.decode('ascii').split('\n')), sorted(self.dummyObjectBody().split('\n')))
+
+        self.s3.delete_object(Bucket=self.bucket_name, Key=key)
+
+        if old_queue_name is None:
+            del os.environ['QUEUE_NAME']
+        else:
+            os.environ['QUEUE_NAME'] = old_queue_name
+
+        if old_bucket is None:
+            del os.environ['WORK_BUCKET']
+        else:
+            os.environ['WORK_BUCKET'] = old_bucket
+
+        if old_folder is None:
+            del os.environ['WORK_FOLDER']
+        else:
+            os.environ['WORK_FOLDER'] = old_folder
 
     @staticmethod
     def dummyLocationList() -> List[str]:

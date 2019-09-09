@@ -6,15 +6,16 @@
 
 import boto3
 import logging
+import os
 from typing import Any, Dict
 
-EC2_INSTANCE_ID = 'i-0f2ace5d656e6fa62'
+DEFAULT_EC2_INSTANCE_ID = 'i-0f2ace5d656e6fa62'
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def ec2_start() -> None:
+def ec2_start(instance_id: str) -> None:
     """
     EC2サーバを起動する
 
@@ -24,9 +25,7 @@ def ec2_start() -> None:
     logger.info('ec2_start')
     client = boto3.client('ec2')
     response = client.start_instances(
-        InstanceIds=[
-            EC2_INSTANCE_ID
-        ]
+        InstanceIds=[instance_id]
     )
     logger.info(response)
     if response['ResponseMetadata']['HTTPStatusCode'] != 200:
@@ -51,7 +50,8 @@ def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
     """
     try:
         logger.info('start.')
-        ec2_start()
+        instance_id = os.environ.get('EC2_INSTANCE_ID', DEFAULT_EC2_INSTANCE_ID)
+        ec2_start(instance_id)
         logger.info('finished.')
         return {
             'statusCode': 200,

@@ -6,12 +6,13 @@ S3に配置された日毎の位置情報ファイルを取得するため、API
 
 import boto3
 import logging
+import os
 from typing import Any, Dict
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-DOWNLOAD_BUCKET = 'me32as8cme32as8c-task3-download'
+DEFAULT_DOWNLOAD_BUCKET = 'me32as8cme32as8c-task3-download'
 
 s3 = boto3.client('s3')
 
@@ -42,7 +43,7 @@ def get_key(event: Dict[str, Any]) -> str:
     return event['ymd'] + '.csv.gz'
 
 
-def check_file(key: str, bucket: str = DOWNLOAD_BUCKET) -> None:
+def check_file(key: str, bucket: str) -> None:
     """
     S3上に指定されたキーのオブジェクトが存在するかどうかを調べる
 
@@ -63,7 +64,7 @@ def check_file(key: str, bucket: str = DOWNLOAD_BUCKET) -> None:
     s3.head_object(Bucket=bucket, Key=key)
 
 
-def get_presigned_url(key: str, bucket: str = DOWNLOAD_BUCKET) -> str:
+def get_presigned_url(key: str, bucket: str) -> str:
     """
     指定されたキーの署名付きURLを返す
 
@@ -105,9 +106,11 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
     try:
         logger.info('start.')
+        bucket = os.environ.get('DOWNLOAD_BUCKET', DEFAULT_DOWNLOAD_BUCKET)
+
         key = get_key(event)
-        check_file(key)
-        location = get_presigned_url(key)
+        check_file(key, bucket)
+        location = get_presigned_url(key, bucket)
         logger.info('finished.')
         return {
             'Location': location

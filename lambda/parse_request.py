@@ -10,12 +10,13 @@ APIGateway経由でLambdaとして呼び出される
 
 import boto3
 import logging
+import os
 from typing import Any, Dict
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-QUEUE_NAME = 'request-queue'
+DEFAULT_QUEUE_NAME = 'request-queue'
 
 
 def parse_request(json: Dict[str, Any]) -> str:
@@ -67,7 +68,7 @@ def parse_request(json: Dict[str, Any]) -> str:
     return user_id + ',' + str(latitude) + ',' + str(longitude) + ',' + str(timestamp)
 
 
-def push_location(location: str, queue_name: str = QUEUE_NAME) -> None:
+def push_location(location: str, queue_name: str) -> None:
     """
     位置情報を表すCSVをSQSにpushする
 
@@ -105,8 +106,9 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
     try:
         logger.info('start.')
+        queue_name = os.environ.get('QUEUE_NAME', DEFAULT_QUEUE_NAME)
         location = parse_request(event)
-        push_location(location)
+        push_location(location, queue_name)
         logger.info('finished.')
         return {
             'statusCode': 200,
