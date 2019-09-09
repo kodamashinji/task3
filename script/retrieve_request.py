@@ -29,6 +29,7 @@ logger.setLevel(logging.INFO)
 DEFAULT_BUCKET_LOCATION = 'me32as8cme32as8c-task3-location'
 DEFAULT_FOLDER_WORK = 'work/'
 DEFAULT_FOLDER_PARTED = 'parted/'
+DEFAULT_TABLE_LOCATION = 'spectrum.location'
 
 s3 = boto3.client('s3')
 tz = 9 * 60 * 60   # JST(+9:00)
@@ -140,7 +141,7 @@ def get_timestamp_and_buffer(line: bytes) -> (int, bytes):
         try:
             fields = s.split(',')
             if len(fields) == 4:
-                timestamp = int(fields[3]) # 最後のフィールド
+                timestamp = int(fields[3])  # 最後のフィールド
                 buffer = bytes(s + '\n', 'ascii')      # str -> bytes
                 return timestamp, buffer
         except IndexError:  # ","が無い
@@ -167,7 +168,7 @@ def remove_location_file(file_list: List[str], bucket: str) -> None:
         s3.delete_object(Bucket=bucket, Key=file)
 
 
-def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: str, bucket: str, prefix: str) -> None:
+def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: str, table: str, bucket: str, prefix: str) -> None:
     """
     Redshiftにpartitionを追加
 
@@ -178,14 +179,16 @@ def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: s
         redshift_connect()で取得
     ymd: str
         年月日(YYYYMMDD)の文字列
+    table: str
+        Redshift内のテーブル名
     bucket: str
         オブジェクトを書き込むS3バケット
     prefix: str
         バケットのprefix
     """
     with conn.cursor() as cur:
-        cur.execute('alter table spectrum.location add if not exists partition(created_date=\'' + ymd + '\') '
-                    + 'location \'s3://' + bucket + '/' + prefix + 'created_date=' + ymd + '/\'')
+        cur.execute('''alter table {0} add if not exists partition(created_date='{1}')
+                    location 's3://{2}/{3}created_date={1}/' '''.format(table, ymd, bucket, prefix))
 
 
 def get_date_str(unix_time: int) -> str:
@@ -245,6 +248,7 @@ def main() -> str:
     bucket = os.environ.get('BUCKET_LOCATION', DEFAULT_BUCKET_LOCATION)
     folder_work = os.environ.get('FOLDER_WORK', DEFAULT_FOLDER_WORK)
     folder_parted = os.environ.get('FOLDER_PARTED', DEFAULT_FOLDER_PARTED)
+    table_location = os.environ.get('TABLE_LOCATION', DEFAULT_TABLE_LOCATION)
 
     temporary_file_dict = dict()
     try:
@@ -274,7 +278,7 @@ def main() -> str:
                 else:
                     # 前日までのデータは圧縮してS3のparted/フォルダにコピーする
                     ymd = get_date_str(base_time)  # YYYYMMDD
-                    add_partition_to_redshift(conn, ymd, bucket, folder_parted)
+                    add_partition_to_redshift(conn, ymd, table_location, bucket, folder_parted)
                     compress_and_upload(temp_file.name, upload_file_name, ymd, bucket, folder_parted)
 
         # 処理済みのファイルを削除

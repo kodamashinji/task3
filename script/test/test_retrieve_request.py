@@ -11,18 +11,20 @@ import os
 import warnings
 import tempfile
 import gzip
+import psycopg2
 
 import sys
 sys.path.append('..')
 from retrieve_request import list_location_file, get_base_time, separate_location, get_timestamp_and_buffer,\
-    remove_location_file, get_date_str, compress_and_upload
+    remove_location_file, add_partition_to_redshift, get_date_str, compress_and_upload
+from get_connection_string import get_connection_string
 
 
 class TestRetrieveRequest(unittest.TestCase):
     """
     TestModule for retrieve_request
     """
-    s3, bucket_name = (None, None)
+    s3, bucket_name, connection_string = (None, None, None)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -31,8 +33,10 @@ class TestRetrieveRequest(unittest.TestCase):
         """
         cls.s3 = boto3.client('s3')
         cls.bucket_name = 'task3test' + str(uuid.uuid4())
+        cls.connection_string = get_connection_string()
 
         cls.setUpS3()
+        cls.setUpRedshift()
 
         # BOTO3かunittestの不具合避け
         warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>")
@@ -43,6 +47,7 @@ class TestRetrieveRequest(unittest.TestCase):
         後片付け
         """
         cls.tearDownS3()
+        cls.tearDownRedshift()
 
     @classmethod
     def setUpS3(cls) -> None:
@@ -107,6 +112,33 @@ class TestRetrieveRequest(unittest.TestCase):
         cls.s3.delete_objects(Bucket=cls.bucket_name,
                               Delete={'Objects': [{'Key': c} for c in keys if c[-1:] != '/']})
         cls.s3.delete_bucket(Bucket=cls.bucket_name)
+
+    @classmethod
+    def setUpRedshift(cls) -> None:
+        """
+        テスト用Redshiftテーブルの作成
+        """
+        with psycopg2.connect(cls.connection_string) as conn:
+            conn.autocommit = True  # CREATE EXTERNAL TABLEはBEGIN内で使えないので、autocommit=Trueにしておく
+            with conn.cursor() as cur:
+                cur.execute('''create external table spectrum.test(
+                  user_id char(36),
+                  latitude double precision,
+                  longitude double precision,
+                  created_at integer)
+                  partitioned by (created_date char(8))
+                  row format delimited fields terminated by ',' stored as textfile
+                  location 's3://{}/parted/' '''.format(cls.bucket_name))
+
+    @classmethod
+    def tearDownRedshift(cls) -> None:
+        """
+        テスト用Redshiftテーブルの削除
+        """
+        with psycopg2.connect(cls.connection_string) as conn:
+            conn.autocommit = True  # CREATE EXTERNAL TABLEはBEGIN内で使えないので、autocommit=Trueにしておく
+            with conn.cursor() as cur:
+                cur.execute('drop table spectrum.test')
 
     def test_list_location_file(self) -> None:
         """
@@ -233,3 +265,15 @@ class TestRetrieveRequest(unittest.TestCase):
             self.assertEqual(decompressed, b'3313c918-55e4-4d15-879e-d9fb076a86d0,35.7,135.1,1567263601\n')
         finally:
             os.remove(temp.name)
+
+    def test_add_partition_to_redshift(self) -> None:
+        """
+        add_partition_to_redshiftのテスト
+        """
+        with psycopg2.connect(self.connection_string) as conn:
+            conn.autocommit = True  # CREATE EXTERNAL TABLEはBEGIN内で使えないので、autocommit=Trueにしておく
+            add_partition_to_redshift(conn, '20190901', 'spectrum.test', self.bucket_name, 'parted/')
+            with conn.cursor() as cur:
+                cur.execute('select location from svv_external_partitions where tablename=\'test\'')
+                results = cur.fetchall()
+        self.assertIn('s3://{}/parted/created_date=20190901'.format(self.bucket_name), [x[0] for x in results])

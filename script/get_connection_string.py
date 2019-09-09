@@ -24,4 +24,4 @@ def get_connection_string(config_file: str = None) -> str:
             if len(s_line) == 0 or s_line[0] == '#':
                 continue
             host, port, dbname, user, password = s_line.split(':')
-            return 'dbname=' + dbname + ' user=' + user + ' password=' + password + ' host=' + host + ' port=' + port
+            return 'dbname={0} user={1} password={2} host={3} port={4}'.format(dbname, user, password, host, port)
