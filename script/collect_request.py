@@ -16,15 +16,16 @@ import datetime
 import tempfile
 import sys
 import gzip
+import os
 import psycopg2
 import psycopg2.extensions
-from typing import Type, BinaryIO
+from typing import BinaryIO
 from get_connection_string import get_connection_string
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-DOWNLOAD_BUCKET = 'me32as8cme32as8c-task3-download'
+DEFAULT_BUCKET_DOWNLOAD = 'me32as8cme32as8c-task3-download'
 
 s3 = boto3.client('s3')
 tz = 9 * 60 * 60   # JST(+9:00)
@@ -71,6 +72,8 @@ def main(ymd: str) -> str:
     str:
         "success" or "error"
     """
+    bucket = os.environ.get('BUCKET_DOWNLOAD', DEFAULT_BUCKET_DOWNLOAD)
+
     try:
         logger.info('start.')
 
@@ -82,7 +85,7 @@ def main(ymd: str) -> str:
             # 空ファイルで無ければ、一時ファイルをS3にアップロードする
             if records > 0:
                 ftemp.seek(0)
-                s3.upload_fileobj(Fileobj=ftemp, Bucket=DOWNLOAD_BUCKET, Key=ymd + '.csv.gz')
+                s3.upload_fileobj(Fileobj=ftemp, Bucket=bucket, Key=ymd + '.csv.gz')
 
         logger.info('finished.')
         return 'success'

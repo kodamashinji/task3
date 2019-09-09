@@ -26,15 +26,15 @@ from get_connection_string import get_connection_string
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-BUCKET = 'me32as8cme32as8c-task3-location'
-FOLDER_WORK = 'work/'
-FOLDER_PARTED = 'parted/'
+DEFAULT_BUCKET_LOCATION = 'me32as8cme32as8c-task3-location'
+DEFAULT_FOLDER_WORK = 'work/'
+DEFAULT_FOLDER_PARTED = 'parted/'
 
 s3 = boto3.client('s3')
 tz = 9 * 60 * 60   # JST(+9:00)
 
 
-def list_location_file(bucket: str = BUCKET, prefix: str = FOLDER_WORK) -> List[str]:
+def list_location_file(bucket: str, prefix: str) -> List[str]:
     """
     作業用フォルダ(S3)のファイル一覧を取得する
 
@@ -88,7 +88,7 @@ def get_base_time(unix_time: int) -> int:
     return local_base_time - tz
 
 
-def separate_location(file: str, temporary_file_dict: Dict[int, BinaryIO], bucket: str = BUCKET) -> dict:
+def separate_location(file: str, temporary_file_dict: Dict[int, BinaryIO], bucket: str) -> dict:
     """
     レコードの基準時間毎に、保管用一時ファイルに振り分ける
 
@@ -151,7 +151,7 @@ def get_timestamp_and_buffer(line: bytes) -> (int, bytes):
     return 0, b''
 
 
-def remove_location_file(file_list: List[str], bucket: str = BUCKET) -> None:
+def remove_location_file(file_list: List[str], bucket: str) -> None:
     """
     処理済みのファイルを削除
 
@@ -167,7 +167,7 @@ def remove_location_file(file_list: List[str], bucket: str = BUCKET) -> None:
         s3.delete_object(Bucket=bucket, Key=file)
 
 
-def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: str) -> None:
+def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: str, bucket: str, prefix: str) -> None:
     """
     Redshiftにpartitionを追加
 
@@ -178,10 +178,14 @@ def add_partition_to_redshift(conn: Type[psycopg2.extensions.connection], ymd: s
         redshift_connect()で取得
     ymd: str
         年月日(YYYYMMDD)の文字列
+    bucket: str
+        オブジェクトを書き込むS3バケット
+    prefix: str
+        バケットのprefix
     """
     with conn.cursor() as cur:
         cur.execute('alter table spectrum.location add if not exists partition(created_date=\'' + ymd + '\') '
-                    + 'location \'s3://' + BUCKET + '/' + FOLDER_PARTED + 'created_date=' + ymd + '/\'')
+                    + 'location \'s3://' + bucket + '/' + prefix + 'created_date=' + ymd + '/\'')
 
 
 def get_date_str(unix_time: int) -> str:
@@ -201,8 +205,7 @@ def get_date_str(unix_time: int) -> str:
     return datetime.datetime.utcfromtimestamp(unix_time + tz).strftime('%Y%m%d')  # YYYYMMDD
 
 
-def compress_and_upload(source_file_name: str, upload_file_name: str, ymd: str,
-                        bucket: str = BUCKET, prefix: str = FOLDER_PARTED) -> None:
+def compress_and_upload(source_file_name: str, upload_file_name: str, ymd: str, bucket: str, prefix: str) -> None:
     """
     指定されたファイルを圧縮し、S3にアップロードする
 
@@ -210,16 +213,12 @@ def compress_and_upload(source_file_name: str, upload_file_name: str, ymd: str,
     ----------
     source_file_name: str
         コピー元となるローカルソース
-
     upload_file_name: str
         アップロードするオブジェクト名。実際のオブジェクト名は、このオブジェクト名に".gz"が付与される
-
     ymd: str
         アップロードするオブジェクトが格納されるパーティションフォルダ用の日付
-
     bucket: str
         オブジェクトを格納するバケット名
-
     prefix: str
         オブジェクトを格納するフォルダ(prefix)
     """
@@ -243,15 +242,19 @@ def main() -> str:
     str
         "success" or "error"
     """
+    bucket = os.environ.get('BUCKET_LOCATION', DEFAULT_BUCKET_LOCATION)
+    folder_work = os.environ.get('FOLDER_WORK', DEFAULT_FOLDER_WORK)
+    folder_parted = os.environ.get('FOLDER_PARTED', DEFAULT_FOLDER_PARTED)
+
     temporary_file_dict = dict()
     try:
         logger.info('start.')
         # ターゲットとなる全ファイル名を取得
-        file_list = list_location_file()
+        file_list = list_location_file(bucket, folder_work)
 
         # データを基準時間毎に振り分けて一時ファイルに保管する
         for file in file_list:
-            temporary_file_dict = separate_location(file, temporary_file_dict)
+            temporary_file_dict = separate_location(file, temporary_file_dict, bucket)
 
         # 一旦クローズ
         [t.close() for t in temporary_file_dict.values()]
@@ -267,15 +270,15 @@ def main() -> str:
             for base_time, temp_file in temporary_file_dict.items():
                 if base_time == today_base_time:
                     # 本日分のデータはwork/ディレクトリに送り返す
-                    s3.upload_file(Filename=temp_file.name, Bucket=BUCKET, Key=FOLDER_WORK + upload_file_name)
+                    s3.upload_file(Filename=temp_file.name, Bucket=bucket, Key=folder_work + upload_file_name)
                 else:
                     # 前日までのデータは圧縮してS3のparted/フォルダにコピーする
                     ymd = get_date_str(base_time)  # YYYYMMDD
-                    add_partition_to_redshift(conn, ymd)
-                    compress_and_upload(temp_file.name, upload_file_name, ymd)
+                    add_partition_to_redshift(conn, ymd, bucket, folder_parted)
+                    compress_and_upload(temp_file.name, upload_file_name, ymd, bucket, folder_parted)
 
         # 処理済みのファイルを削除
-        remove_location_file(file_list)
+        remove_location_file(file_list, bucket)
 
         logger.info('finished.')
         return 'success'

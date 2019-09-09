@@ -76,8 +76,8 @@ class TestGetLocationList(unittest.TestCase):
         """
         lambda_handlerのテスト
         """
-        old_download_bucket = os.environ.get('DOWNLOAD_BUCKET')
-        os.environ['DOWNLOAD_BUCKET'] = self.bucket_name
+        old_download_bucket = os.environ.get('BUCKET_DOWNLOAD')
+        os.environ['BUCKET_DOWNLOAD'] = self.bucket_name
 
         result = lambda_handler({'ymd': '20190901'}, None)
         self.assertIn('Location', result)

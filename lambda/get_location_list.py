@@ -12,7 +12,7 @@ from typing import Any, Dict
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-DEFAULT_DOWNLOAD_BUCKET = 'me32as8cme32as8c-task3-download'
+DEFAULT_BUCKET_DOWNLOAD = 'me32as8cme32as8c-task3-download'
 
 s3 = boto3.client('s3')
 
@@ -106,7 +106,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
     try:
         logger.info('start.')
-        bucket = os.environ.get('DOWNLOAD_BUCKET', DEFAULT_DOWNLOAD_BUCKET)
+        bucket = os.environ.get('BUCKET_DOWNLOAD', DEFAULT_BUCKET_DOWNLOAD)
 
         key = get_key(event)
         check_file(key, bucket)

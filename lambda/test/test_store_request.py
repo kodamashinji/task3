@@ -91,12 +91,12 @@ class TestStoreRequest(unittest.TestCase):
         lambda_handler関数のテスト
         """
         old_queue_name = os.environ.get('QUEUE_NAME')
-        old_bucket = os.environ.get('WORK_BUCKET')
-        old_folder = os.environ.get('WORK_FOLDER')
+        old_bucket = os.environ.get('BUCKET_LOCATION')
+        old_folder = os.environ.get('FOLDER_WORK')
 
         os.environ['QUEUE_NAME'] = self.queue_name
-        os.environ['WORK_BUCKET'] = self.bucket_name
-        os.environ['WORK_FOLDER'] = 'work/'
+        os.environ['BUCKET_LOCATION'] = self.bucket_name
+        os.environ['FOLDER_WORK'] = 'work/'
 
         # ダミーデータ
         for location in self.dummyLocationList():

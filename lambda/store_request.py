@@ -18,8 +18,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 DEFAULT_QUEUE_NAME = 'request-queue'
-DEFAULT_WORK_BUCKET = 'me32as8cme32as8c-task3-location'
-DEFAULT_WORK_FOLDER = 'work/'
+DEFAULT_BUCKET_LOCATION = 'me32as8cme32as8c-task3-location'
+DEFAULT_FOLDER_WORK = 'work/'
 
 
 def retrieve_location(queue_name: str) -> List[str]:
@@ -100,8 +100,8 @@ def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
         logger.info('start.')
 
         queue_name = os.environ.get('QUEUE_NAME', DEFAULT_QUEUE_NAME)
-        bucket = os.environ.get('WORK_BUCKET', DEFAULT_WORK_BUCKET)
-        folder = os.environ.get('WORK_FOLDER', DEFAULT_WORK_FOLDER)
+        bucket = os.environ.get('BUCKET_LOCATION', DEFAULT_BUCKET_LOCATION)
+        folder = os.environ.get('FOLDER_WORK', DEFAULT_FOLDER_WORK)
 
         locations = retrieve_location(queue_name)
         if len(locations) > 0:

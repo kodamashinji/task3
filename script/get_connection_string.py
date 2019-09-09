@@ -17,7 +17,7 @@ def get_connection_string(config_file: str = None) -> str:
         $HOME/.pgpassの先頭行を取得して返す
     """
     if config_file is None:
-        config_file = os.getenv('HOME') + '/.pgpass'
+        config_file = os.environ.get('HOME', '/root') + '/.pgpass'
     with open(config_file, 'r') as fd:
         for line in fd:
             s_line = line.strip()
