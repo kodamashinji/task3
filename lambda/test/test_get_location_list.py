@@ -86,6 +86,6 @@ class TestGetLocationList(unittest.TestCase):
         self.assertEqual(r.content, b'dummy')
 
         if old_download_bucket is None:
-            del os.environ['DOWNLOAD_BUCKET']
+            del os.environ['BUCKET_DOWNLOAD']
         else:
-            os.environ['DOWNLOAD_BUCKET'] = old_download_bucket
+            os.environ['BUCKET_DOWNLOAD'] = old_download_bucket

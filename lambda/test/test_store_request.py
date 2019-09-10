@@ -90,13 +90,15 @@ class TestStoreRequest(unittest.TestCase):
         """
         lambda_handler関数のテスト
         """
-        old_queue_name = os.environ.get('QUEUE_NAME')
-        old_bucket = os.environ.get('BUCKET_LOCATION')
-        old_folder = os.environ.get('FOLDER_WORK')
+        envs = {'BUCKET_LOCATION': self.bucket_name,
+                'QUEUE_NAME': self.queue_name,
+                'FOLDER_WORK': 'work/'}
 
-        os.environ['QUEUE_NAME'] = self.queue_name
-        os.environ['BUCKET_LOCATION'] = self.bucket_name
-        os.environ['FOLDER_WORK'] = 'work/'
+        # 環境変数上書き
+        old_values = dict()
+        for k, v in envs.items():
+            old_values[k] = os.environ.get(k)
+            os.environ[k] = v
 
         # ダミーデータ
         for location in self.dummyLocationList():
@@ -117,20 +119,12 @@ class TestStoreRequest(unittest.TestCase):
 
         self.s3.delete_object(Bucket=self.bucket_name, Key=key)
 
-        if old_queue_name is None:
-            del os.environ['QUEUE_NAME']
-        else:
-            os.environ['QUEUE_NAME'] = old_queue_name
-
-        if old_bucket is None:
-            del os.environ['WORK_BUCKET']
-        else:
-            os.environ['WORK_BUCKET'] = old_bucket
-
-        if old_folder is None:
-            del os.environ['WORK_FOLDER']
-        else:
-            os.environ['WORK_FOLDER'] = old_folder
+        # 環境変数戻す
+        for k in envs.keys():
+            if old_values[k] is None:
+                del os.environ[k]
+            else:
+                os.environ[k] = old_values[k]
 
     @staticmethod
     def dummyLocationList() -> List[str]:

@@ -12,11 +12,13 @@ import warnings
 import tempfile
 import gzip
 import psycopg2
+import time
 
 import sys
+
 sys.path.append('..')
-from retrieve_request import list_location_file, get_base_time, separate_location, get_timestamp_and_buffer,\
-    remove_location_file, add_partition_to_redshift, get_date_str, compress_and_upload
+from retrieve_request import list_location_file, get_base_time, separate_location, get_timestamp_and_buffer, \
+    remove_location_file, add_partition_to_redshift, get_date_str, compress_and_upload, main
 from get_connection_string import get_connection_string
 
 
@@ -234,8 +236,8 @@ class TestRetrieveRequest(unittest.TestCase):
         """
         request = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix='work/1567177')
         key_set = set([c['Key'] for c in request['Contents']])
-        if 'work/1567177200.csv' not in key_set\
-                or 'work/1567177199.csv' not in key_set\
+        if 'work/1567177200.csv' not in key_set \
+                or 'work/1567177199.csv' not in key_set \
                 or 'work/1567177201.csv' not in key_set:
             self.skipTest('test files not exists')
 
@@ -277,3 +279,74 @@ class TestRetrieveRequest(unittest.TestCase):
                 cur.execute('select location from svv_external_partitions where tablename=\'test\'')
                 results = cur.fetchall()
         self.assertIn('s3://{}/parted/created_date=20190901'.format(self.bucket_name), [x[0] for x in results])
+
+    def test_main(self) -> None:
+        """
+        mainのテスト
+        """
+        envs = {'BUCKET_LOCATION': self.bucket_name,
+                'FOLDER_WORK': 'work2/',
+                'FOLDER_PARTED': 'parted/',
+                'TABLE_LOCATION': 'spectrum.test'}
+
+        # 環境変数上書き
+        old_values = dict()
+        for k, v in envs.items():
+            old_values[k] = os.environ.get(k)
+            os.environ[k] = v
+
+        # 昨日のファイル2つ、今日のファイル1つ
+        now = int(time.time())
+        today_base_time = get_base_time(now)
+        time1 = str(today_base_time - 23 * 60 * 60 - 59 * 60 - 59)
+        time2 = str(today_base_time - 1)
+        time3 = str(today_base_time + 1)
+        date_prev = get_date_str(today_base_time - 1)
+        date_today = get_date_str(today_base_time + 1)
+
+        self.s3.put_object(Bucket=self.bucket_name, Key='work2/' + time1 + '.csv',
+                           Body=bytes('3313c918-55e4-4d15-879e-000000000000,35.7,135.1,' + time1 + '\n', 'ascii'))
+        self.s3.put_object(Bucket=self.bucket_name, Key='work2/' + time3 + '.csv',
+                           Body=bytes('3313c918-55e4-4d15-879e-000000000001,35.7,135.1,' + time3 + '\n', 'ascii'))
+        self.s3.put_object(Bucket=self.bucket_name, Key='work2/' + time2 + '.csv',
+                           Body=bytes('3313c918-55e4-4d15-879e-000000000002,35.7,135.1,' + time1 + '\n'
+                                      + '3313c918-55e4-4d15-879e-000000000003,35.7,135.1,' + time2 + '\n'
+                                      + '3313c918-55e4-4d15-879e-000000000004,35.7,135.1,' + time3 + '\n', 'ascii'))
+
+        # call main()
+        self.assertEqual(main(), 'success')
+
+        request = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix='work2/')
+        self.assertEqual(request['KeyCount'], 1)  # 本日分データが戻されているはず
+
+        request = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix='parted/created_date=' + date_prev + '/')
+        self.assertGreaterEqual(request['KeyCount'], 1)  # 昨日分データが作成されている
+
+        with psycopg2.connect(self.connection_string) as conn:
+            with conn.cursor() as cur:
+                cur.execute('select user_id from spectrum.test where created_date=\'' + date_prev + '\'')
+                results_prev = cur.fetchall()
+
+                cur.execute('select user_id from spectrum.test where created_date=\'' + date_today + '\'')
+                results_today = cur.fetchall()
+
+                for user_id in ['3313c918-55e4-4d15-879e-000000000000',
+                                '3313c918-55e4-4d15-879e-000000000002',
+                                '3313c918-55e4-4d15-879e-000000000003']:
+                    self.assertIn((user_id,), results_prev)
+                    self.assertNotIn((user_id,), results_today)
+
+                for user_id in ['3313c918-55e4-4d15-879e-000000000001',
+                                '3313c918-55e4-4d15-879e-000000000004']:
+                    self.assertNotIn((user_id,), results_prev)
+                    self.assertNotIn((user_id,), results_today)
+
+        self.s3.delete_objects(Bucket=self.bucket_name,
+                               Delete={'Objects': [{'Key': 'work2/' + c + '.csv'} for c in [time1, time2, time3]]})
+
+        # 環境変数戻す
+        for k in envs.keys():
+            if old_values[k] is None:
+                del os.environ[k]
+            else:
+                os.environ[k] = old_values[k]
